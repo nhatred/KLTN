@@ -3,8 +3,7 @@ import Home from "./Home";
 import Dashboard from "./Dashboard";
 import Activity from "./Activity";
 import MainLayout from "../layout/MainLayout";
-import Signin from "./auth/Signin";
-import Signup from "./auth/Signup";
+import CreateQuiz from "./CreateQuiz";
 
 const router = createBrowserRouter([
   {
@@ -24,12 +23,8 @@ const router = createBrowserRouter([
     Component: Activity,
   },
   {
-    path: "/signin",
-    Component: Signin,
-  },
-  {
-    path: "/signup",
-    Component: Signup,
+    path: "/create-quiz",
+    Component: CreateQuiz,
   },
 ]);
 
