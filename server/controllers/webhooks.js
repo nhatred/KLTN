@@ -18,12 +18,8 @@ export const clerkWebhooks = async (req, res) => {
         const userData = {
           _id: data.id,
           email: data.email_addresses[0].email_address,
-          username:
-            data.username ||
-            data.email_addresses[0].email_address.split("@")[0],
-          name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
-          avatar: data.profile_image_url,
-          isVerified: true, // Mặc định đã xác thực vì đến từ Clerk
+          name: data.first_name + " " + data.last_name,
+          imageUrl: data.image_url,
         };
         await User.create(userData);
         res.json({});
