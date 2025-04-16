@@ -28,14 +28,15 @@ export const clerkWebhooks = async (req, res) => {
 
       case "user.updated": {
         // Xử lý khi user được cập nhật trong Clerk
-        const updatedData = {
+        const userData = {
           email: data.email_addresses[0].email_address,
-          name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
-          avatar: data.profile_image_url,
+          name: data.first_name + " " + data.last_name,
+          imageUrl: data.image_url,
         };
 
-        await User.findByIdAndUpdate(data.id, updatedData);
-        return res.status(200).json({ message: "User updated successfully" });
+        await User.findByIdAndUpdate(data.id, userData);
+        res.status(200).json({ message: "User updated successfully" });
+        break;
       }
 
       case "user.deleted": {
@@ -47,5 +48,7 @@ export const clerkWebhooks = async (req, res) => {
       default:
         return res.status(200).json({ message: "Event type not handled" });
     }
-  } catch (error) {}
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
 };
