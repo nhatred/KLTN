@@ -8,21 +8,21 @@ const userSchema = new mongoose.Schema(
     imageUrl: { type: String, required: true },
 
     // Lịch sử làm bài
-    quizHistory: [
-      {
-        quizId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Quiz",
-        },
-        score: Number,
-        correctAnswers: Number,
-        rank: Number,
-        submittedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
+    // quizHistory: [
+    //   {
+    //     quizId: {
+    //       type: mongoose.Schema.Types.ObjectId,
+    //       ref: "Quiz",
+    //     },
+    //     score: Number,
+    //     correctAnswers: Number,
+    //     rank: Number,
+    //     submittedAt: {
+    //       type: Date,
+    //       default: Date.now,
+    //     },
+    //   },
+    // ],
   },
   { timestamps: true }
 );
