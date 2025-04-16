@@ -12,9 +12,9 @@ const run = async () => {
     console.log("✅ Kết nối MongoDB thành công!");
 
     const userData = {
-      _id: "user_test123", // Đảm bảo _id là String
-      email: "test@example.com",
-      name: "Test User",
+      _id: "user_tesadad", // Đảm bảo _id là String
+      email: "test@example.com1",
+      name: "Test User11",
       imageUrl: "https://example.com/image.jpg",
     };
 

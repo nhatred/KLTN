@@ -5,7 +5,7 @@ const connectDB = async () => {
     console.log("📡 Đang kết nối đến MongoDB...");
     console.log("🔐 MONGODB_URI:", process.env.MONGODB_URI);
 
-    await mongoose.connect(`${process.env.MONGODB_URI}/squizz`);
+    await mongoose.connect(`${process.env.MONGODB_URI}`);
     console.log("✅ Kết nối MongoDB thành công!");
 
     mongoose.connection.on("connected", () => {
