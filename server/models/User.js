@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema(
         },
         score: Number,
         correctAnswers: Number,
+        rank: Number,
         submittedAt: {
           type: Date,
           default: Date.now,
