@@ -4,7 +4,7 @@ const connectDB = async () => {
   mongoose.connection.on("connected", () => {
     console.log("Database connected");
   });
-  await mongoose.connect(`${process.env.MONGODB_URI}/Squizz`);
+  await mongoose.connect(`${process.env.MONGODB_URI}/Cluster0`);
 };
 
 export default connectDB;
