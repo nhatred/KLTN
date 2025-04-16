@@ -12,6 +12,7 @@ export const clerkWebhooks = async (req, res) => {
     });
 
     const { data, type } = req.body;
+
     switch (type) {
       case "user.created": {
         // Xử lý khi có user mới được tạo trong Clerk
@@ -21,7 +22,9 @@ export const clerkWebhooks = async (req, res) => {
           name: data.first_name + " " + data.last_name,
           imageUrl: data.image_url,
         };
+        console.log("Before DB call");
         await User.create(userData);
+        console.log("After DB call");
         res.json({});
         break;
       }
@@ -42,11 +45,13 @@ export const clerkWebhooks = async (req, res) => {
       case "user.deleted": {
         // Xử lý khi user bị xóa trong Clerk
         await User.findByIdAndDelete(data.id);
-        return res.status(200).json({ message: "User deleted successfully" });
+        res.status(200).json({ message: "User deleted successfully" });
+        break;
       }
 
       default:
-        return res.status(200).json({ message: "Event type not handled" });
+        res.status(200).json({ message: "Event type not handled" });
+        break;
     }
   } catch (error) {
     res.json({ success: false, message: error.message });
