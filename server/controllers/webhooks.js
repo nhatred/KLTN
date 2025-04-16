@@ -22,14 +22,7 @@ export const clerkWebhooks = async (req, res) => {
           name: data.first_name + " " + data.last_name,
           imageUrl: data.image_url,
         };
-        console.log("Before DB call");
-        try {
-          const createdUser = await User.create(userData);
-          console.log("✅ After DB call", createdUser);
-        } catch (err) {
-          console.error("❌ Lỗi khi tạo user:", err);
-        }
-        console.log("After DB call");
+        await User.create(userData);
         res.json({});
         break;
       }
