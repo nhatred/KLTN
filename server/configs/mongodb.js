@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 const connectDB = async () => {
   try {
     console.log("📡 Đang kết nối đến MongoDB...");
+    console.log("🔐 MONGODB_URI:", process.env.MONGODB_URI);
+
     await mongoose.connect(`${process.env.MONGODB_URI}/squizz`);
     console.log("✅ Kết nối MongoDB thành công!");
 
