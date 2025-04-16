@@ -25,18 +25,9 @@ export const clerkWebhooks = async (req, res) => {
           avatar: data.profile_image_url,
           isVerified: true, // Mặc định đã xác thực vì đến từ Clerk
         };
-
-        // Kiểm tra nếu user đã tồn tại
-        const existingUser = await User.findById(data.id);
-        if (existingUser) {
-          return res.status(200).json({ message: "User already exists" });
-        }
-
-        // Tạo user mới
-        const newUser = new User(userData);
-        await newUser.save();
-
-        return res.status(201).json({ message: "User created successfully" });
+        await User.create(userData);
+        res.json({});
+        break;
       }
 
       case "user.updated": {
