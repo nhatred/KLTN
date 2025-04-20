@@ -4,6 +4,11 @@ import Dashboard from "./Dashboard";
 import Activity from "./Activity";
 import MainLayout from "../layout/MainLayout";
 import CreateQuiz from "./CreateQuiz";
+import MultipleChoices from "./quiz/MultipleChoices";
+import FillInBlank from "./quiz/FillInBlank";
+import Paragraph from "./quiz/Paragraph";
+import DragAndDrop from "./quiz/DragAndDrop";
+import Dropdown from "./quiz/Dropdown";
 
 const router = createBrowserRouter([
   {
@@ -25,6 +30,26 @@ const router = createBrowserRouter([
   {
     path: "/create-quiz",
     Component: CreateQuiz,
+  },
+  {
+    path: "/multiple-choices",
+    Component: MultipleChoices,
+  },
+  {
+    path: "/fill-inblank",
+    Component: FillInBlank,
+  },
+  {
+    path: "/paragraph",
+    Component: Paragraph,
+  },
+  {
+    path: "/drag-drop",
+    Component: DragAndDrop,
+  },
+  {
+    path: "/dropdown",
+    Component: Dropdown,
   },
 ]);
 

@@ -4,7 +4,7 @@ export default function Quizbar() {
       <div className=" mb-5 bg-white box-shadow rounded-lg">
         <div className="px-10 py-5">
           <p className="text-xl mb-5">Bulk update questions</p>
-          <form className="flex gap-2">
+          <div className="flex gap-2">
             <select
               name="time"
               id="time"
@@ -29,7 +29,7 @@ export default function Quizbar() {
               <option value="4">4 point</option>
               <option value="5">5 point</option>
             </select>
-          </form>
+          </div>
         </div>
       </div>
       <div className="  bg-white box-shadow rounded-lg">

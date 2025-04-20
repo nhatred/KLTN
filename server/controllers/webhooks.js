@@ -3,6 +3,7 @@ import User from "../models/User.js";
 
 export const clerkWebhooks = async (req, res) => {
   try {
+    console.log("Webhook payload:", req.body);
     const whook = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
 
     await whook.verify(JSON.stringify(req.body), {
@@ -12,7 +13,6 @@ export const clerkWebhooks = async (req, res) => {
     });
 
     const { data, type } = req.body;
-
     switch (type) {
       case "user.created": {
         // Xử lý khi có user mới được tạo trong Clerk
@@ -21,10 +21,11 @@ export const clerkWebhooks = async (req, res) => {
           email: data.email_addresses[0].email_address,
           name: data.first_name + " " + data.last_name,
           imageUrl: data.image_url,
-          quizHistory,
         };
+
         await User.create(userData);
-        res.json({});
+        console.log(userData);
+        res.status(200).json({ message: "User created successfully" });
         break;
       }
 

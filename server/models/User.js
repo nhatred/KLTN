@@ -7,20 +7,11 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true },
     imageUrl: { type: String, required: true },
 
-    // Lịch sử làm bài
-    quizHistory: [
+    createdQuizzes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Quiz" }],
+    recentlyJoinedQuizzes: [
       {
-        quizId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Quiz",
-        },
-        score: Number,
-        correctAnswers: Number,
-        rank: Number,
-        submittedAt: {
-          type: Date,
-          default: Date.now,
-        },
+        quizId: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
+        joinedAt: { type: Date, default: Date.now },
       },
     ],
   },

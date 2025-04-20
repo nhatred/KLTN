@@ -12,6 +12,7 @@ export default {
         "red-wine": "#C62828", // Đỏ đô
         "orange-semibold": "#F09F87", //Cam đậm
         "nude-semibold": "#ffebcc",
+        modal: "rgba(0, 0, 0, 0.6)",
       },
       borderWidth: {
         1: "1px",
