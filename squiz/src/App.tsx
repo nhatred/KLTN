@@ -5,8 +5,6 @@ import Dashboard from "./pages/Dashboard";
 import Activity from "./pages/Activity";
 import MainLayout from "./layout/MainLayout";
 import CreateQuiz from "./pages/CreateQuiz";
-import MultipleChoices from "./pages/quiz/MultipleChoices";
-import Paragraph from "./pages/quiz/Paragraph";
 function App() {
   return (
     <>
@@ -18,8 +16,6 @@ function App() {
             <Route path="activity" element={<Activity />} />
           </Route>
           <Route path="/create-quiz" element={<CreateQuiz />} />
-          <Route path="multiple-choices" element={<MultipleChoices />} />
-          <Route path="paragraph" element={<Paragraph />} />
         </Routes>
       </BrowserRouter>
     </>

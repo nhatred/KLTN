@@ -2,6 +2,7 @@ import { NavLink } from "react-router";
 import Quizbar from "../components/Quizbar";
 import React, { useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
+import MultipleChoices from "../components/quiz/MultipleChoices";
 
 export default function CreateQuiz() {
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
@@ -10,7 +11,7 @@ export default function CreateQuiz() {
 
   const [isModal, setIsModal] = useState(false);
   const { getToken } = useAuth();
-  // const { user } = useUser();
+  const [isFormQuestion, setIsFormQuestion] = useState(false);
 
   const [quizData, setQuizData] = useState({
     creator: "",
@@ -18,12 +19,52 @@ export default function CreateQuiz() {
     topic: "",
     difficulty: "",
     isPublic: "public",
-    imageUrl: "",
+    questions: [{}],
+    imageUrl: null,
   });
+  const [questions, setQuestions] = useState([{}]);
+  // const questions = Array<any>();
+  const [imageData, setImageData] = useState<File | null>(null);
   const [quizOptions, setQuizOptions] = useState({
     timePerQuestion: 30,
     scorePerQuestion: 1,
   });
+
+  // Them cau hoi
+  // const addQuestion = () => {
+  //   const newQuestion = {
+  //     tempId: Date.now(),
+  //     questionText: "",
+  //     questionType: "",
+  //     answers: [],
+  //   };
+  //   setQuestions((prevVal) => ({
+  //     ...prevVal,
+  //     newQuestion,
+  //   }));
+  // };
+  const handleGetDataForm = (data: any) => {
+    const newQuestion = {
+      questionId: Date.now(),
+      questionType: data.questionType,
+      timePerQuestion: data.timePerQuestion,
+      scorePerQuestion: data.scorePerQuestion,
+      answers: data.answers,
+    };
+    setQuestions((prevVal) => [...prevVal, newQuestion]);
+    questions.push(newQuestion);
+  };
+  // Update question
+  // const updateQuestion = (tempId: any, field: any, value: any) => {
+  //   const updateQuestions = questions.map((question: any) =>
+  //     question.tempId === tempId ? { ...question, [field]: value } : question
+  //   );
+  //   setQuestions(updateQuestions);
+  // };
+
+  // const removeQuestion = (tempId: any) => {
+  //   setQuestions(questions.filter((q) => q.tempId !== tempId));
+  // };
 
   // Khi thong tin quiz thay doi
   const handleQuizDataChange = (e: any) => {
@@ -34,18 +75,36 @@ export default function CreateQuiz() {
     });
   };
 
+  const handleImageUpload = (e: any) => {
+    if (e.target.files != null) {
+      setImageData(e.target.files[0]);
+    }
+  };
+
+  const showFormQuestion = () => {
+    setIsFormQuestion((prevVal) => !prevVal);
+    setIsModal((prevVal) => !prevVal);
+  };
+
+  // const handleGetDataForm = (data: any) => {
+  //   setQuizData((prevVal) => ({
+  //     ...prevVal,
+  //     questions: [...prevVal.questions, data],
+  //   }));
+  // };
+
   // Save
   const handleSaveQuiz = async () => {
     try {
       const token = await getToken();
-
       const formData = new FormData();
       formData.append("creator", "User1");
       formData.append("name", quizData.name);
       formData.append("topic", quizData.topic);
       formData.append("difficulty", quizData.difficulty);
       formData.append("isPublic", quizData.isPublic);
-      formData.append("imageUrl", quizData.imageUrl);
+      formData.append("imageUrl", imageData || "");
+      // formData.append("questions", JSON.stringify(quizData.questions || []));
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
       const response = await fetch("http://localhost:5000/api/quiz", {
@@ -59,6 +118,19 @@ export default function CreateQuiz() {
       const data = await response.json();
       if (response.ok) {
         console.log("Quiz created!");
+        const quizId = data._id;
+        const questionPromises = questions.map((question) => {
+          const { questionId, ...questionData } = question;
+          questionData.quizId = quizId;
+          return fetch("http://localhost:5000/api/question", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(questionData),
+          }).then((res) => res.json());
+        });
+        await Promise.all(questionPromises);
       } else {
         console.log("Loi tao quiz", data);
       }
@@ -149,10 +221,15 @@ export default function CreateQuiz() {
                 </select>
               </div>
               <input
+                accept="image/*"
                 name="imageUrl"
                 className="mt-5"
-                id="dropzone-file"
                 type="file"
+                onChange={handleImageUpload}
+              />
+              <img
+                src={imageData ? URL.createObjectURL(imageData) : ""}
+                alt=""
               />
             </div>
             <div>
@@ -284,15 +361,15 @@ export default function CreateQuiz() {
               </div>
               <div className="border-1 rounded-lg grid grid-cols-2">
                 <div className="p-5 grid grid-cols-2 gap-x-8 gap-y-2 border-r">
-                  <NavLink
-                    to="/multiple-choices"
+                  <div
+                    onClick={showFormQuestion}
                     className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded"
                   >
                     <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
                       <i className="text-xl  fa-regular fa-circle-check"></i>
                     </div>
                     <p className="font-semibold">Nhiều lựa chọn</p>
-                  </NavLink>
+                  </div>
                   <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
                     <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
                       <i className="fa-regular fa-square"></i>
@@ -332,6 +409,22 @@ export default function CreateQuiz() {
             </div>
           </div>
         ) : null}
+        {isFormQuestion && (
+          <div
+            onClick={showFormQuestion}
+            className="fixed left-0 top-0 right-0 bottom-0 bg-modal flex justify-center items-center"
+          >
+            <div
+              onClick={(e: any) => e.stopPropagation()}
+              className="bg-nude-light p-8 rounded-lg"
+            >
+              <MultipleChoices
+                closeFormQuestion={showFormQuestion}
+                getDataForm={handleGetDataForm}
+              />
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );

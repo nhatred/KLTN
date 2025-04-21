@@ -1,7 +1,15 @@
 import { useState } from "react";
-import { NavLink } from "react-router";
 
-export default function MultipleChoices() {
+export default function MultipleChoices({
+  closeFormQuestion,
+  getDataForm,
+}: any) {
+  const [questionOptions, setQuestionOptions] = useState({
+    questionType: "multipleChoices",
+    questionText: "",
+    timePerQuestion: 30,
+    scorePerQuestion: 1,
+  });
   const [answers, setAnswers] = useState([
     { text: "", isCorrect: false },
     { text: "", isCorrect: false },
@@ -43,58 +51,51 @@ export default function MultipleChoices() {
     setAnswers(newAnswers);
   };
 
-  async function submitQuestion(formData: any) {
-    const query = {
-      timePerQuestion: formData.get("time"),
-      scorePerQuestion: formData.get("score"),
-      questionType: formData.get("questionType"),
-      questionText: formData.get("questionText"),
-      answers: answers,
-    };
-    try {
-      const response = await fetch("/api/questions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(query),
-      });
-      if (!response.ok)
-        throw new Error("Failed to save question at MultipleChoice.tsx");
+  const handleQuestionOptions = (e: any) => {
+    const { name, value } = e.target;
+    setQuestionOptions((prevVal) => ({
+      ...prevVal,
+      [name]: value,
+    }));
+  };
 
-      const savedQuestion = await response.json();
-      console.log("Question save:", savedQuestion);
-    } catch (error) {
-      console.error("error saving at MultipleChoice.tsx", error);
-    }
-  }
+  const saveQuestion = () => {
+    const questionData = {
+      questionType: questionOptions.questionType,
+      timePerQuestion: questionOptions.timePerQuestion,
+      scorePerQuestion: questionOptions.scorePerQuestion,
+      answers,
+    };
+    getDataForm(questionData);
+  };
+
+  const closeForm = () => {
+    closeFormQuestion();
+  };
 
   return (
-    <form action={submitQuestion}>
-      <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
-        <div className="flex items-center gap-5">
-          <NavLink to="/create-quiz">
-            <h1 className="border-1 bg-white w-8 h-8 flex items-center justify-center rounded font-black">
-              <i className="fa-solid fa-arrow-left"></i>
-            </h1>
-          </NavLink>
-          <select
-            name="questionType"
-            id="questionType"
-            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
-          >
-            <option value="multipleChoices">Nhiều lựa chọn</option>
-            <option value="fillInBlank">Điền vào chỗ trống</option>
-            <option value="paragraph">Đoạn văn</option>
-            <option value="dragAndDrop">Kéo và thả</option>
-            <option value="dropDown">Thả xuống</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-5">
-          <div className="flex gap-2">
+    <div onClick={(e) => e.stopPropagation()}>
+      <nav className="h-16  py-2 flex justify-between items-center">
+        <div className="flex items-center w-full justify-between">
+          <div className="flex items-center gap-5">
+            <select
+              name="questionType"
+              id="questionType"
+              value={questionOptions.questionType}
+              onChange={handleQuestionOptions}
+              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            >
+              <option value="multipleChoices">Nhiều lựa chọn</option>
+              <option value="fillInBlank">Điền vào chỗ trống</option>
+              <option value="paragraph">Đoạn văn</option>
+              <option value="dragAndDrop">Kéo và thả</option>
+              <option value="dropDown">Thả xuống</option>
+            </select>
+
             <select
               name="time"
               id="time"
+              onChange={handleQuestionOptions}
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
               <option value="">Thời gian</option>
@@ -107,6 +108,7 @@ export default function MultipleChoices() {
             <select
               name="score"
               id="score"
+              onChange={handleQuestionOptions}
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
               <option value="">Điểm</option>
@@ -117,19 +119,20 @@ export default function MultipleChoices() {
               <option value="5">5 điểm</option>
             </select>
           </div>
-          <button
-            type="submit"
-            className="py-2 px-3 flex items-center gap-2 cursor-pointer bg-nude-semibold btn-hover rounded font-semibold text-lg"
+          <div
+            onClick={closeForm}
+            className="w-10 h-10 cursor-pointer flex justify-center items-center rounded-full hover:bg-nude-semibold"
           >
-            <i className="fa-solid fa-floppy-disk"></i>
-            <p>Lưu</p>
-          </button>
+            <i className="text-2xl text-red-wine fa-solid fa-xmark"></i>
+          </div>
         </div>
       </nav>
-      <div className="bg-gray-200 pt-16 flex items-center h-28">
-        <div className="ml-5 p-2 hover:bg-gray-50 cursor-pointer rounded flex items-center gap-2">
-          <i className="fa-solid fa-square-root-variable"></i>
-          <p className="text-sm">Chèn kí hiệu toán học</p>
+      <div className=" flex items-center">
+        <div>
+          <div className=" p-2 hover:bg-gray-200 bg-white cursor-pointer rounded flex items-center gap-2">
+            <i className="fa-solid fa-square-root-variable"></i>
+            <p className="text-sm">Chèn kí hiệu toán học</p>
+          </div>
         </div>
       </div>
       <div className="container mx-auto px-40 mt-20">
@@ -138,6 +141,8 @@ export default function MultipleChoices() {
             <textarea
               className="text-xl w-full text-center outline-none p-2 flex"
               name="questionText"
+              value={questionOptions.questionText}
+              onChange={handleQuestionOptions}
               rows={5}
               placeholder="Nhập câu hỏi ở đây"
               id=""
@@ -185,6 +190,15 @@ export default function MultipleChoices() {
           </div>
         </div>
       </div>
-    </form>
+      <div className="flex justify-end">
+        <button
+          onClick={saveQuestion}
+          className="py-2 px-3 flex items-center gap-2 cursor-pointer bg-orange-soft hover:bg-orange-semibold rounded font-semibold text-lg"
+        >
+          <i className="fa-solid fa-floppy-disk"></i>
+          <p>Lưu</p>
+        </button>
+      </div>
+    </div>
   );
 }

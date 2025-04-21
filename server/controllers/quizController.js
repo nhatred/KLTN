@@ -6,25 +6,31 @@ export async function createQuiz(req, res) {
     const userId = req.auth.userId;
     const quizData = req.body;
     const imageFile = req.file;
-
+    // Cần Thêm chức năng giảm kích thước hình ảnh (Ảnh lớn hơn 20mb sẽ lỗi)
     if (!imageFile) {
       return res.json({ success: false, message: "Image Quiz not attached" });
     }
-
     quizData.creator = userId;
-    console.log(quizData);
+
     try {
-      const newQuiz = await Quiz.create(quizData);
       try {
+        console.log("Uploading image to Cloudinary:", imageFile);
         const imageUpload = await cloudinary.uploader.upload(imageFile.path);
-        console.log("image" + imageUpload);
-        newQuiz.imageUrl = imageUpload.secure_url;
-      } catch (error) {
-        console.log("image  loi roi" + error);
+
+        // Lấy URL của ảnh từ kết quả upload
+        quizData.imageUrl = imageUpload.secure_url;
+      } catch (cloudinaryError) {
+        console.log("Image Quiz Error: ", cloudinaryError.message);
+        return res.json({
+          success: false,
+          message: "Error uploading image: " + cloudinaryError.message,
+        });
       }
+      const newQuiz = await Quiz.create(quizData);
+      console.log(newQuiz);
       await newQuiz.save();
     } catch (error) {
-      console.log("Loi roi ban oi" + error);
+      console.log("Error Create New Quiz" + error);
     }
 
     res.json({ success: true, message: "Quiz Add" });
