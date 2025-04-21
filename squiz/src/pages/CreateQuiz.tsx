@@ -1,26 +1,81 @@
 import { NavLink } from "react-router";
 import Quizbar from "../components/Quizbar";
-import React, { useEffect, useState } from "react";
-import { useAuth, useUser } from "@clerk/clerk-react";
+import React, { useState } from "react";
+import { useAuth } from "@clerk/clerk-react";
 
 export default function CreateQuiz() {
-  const [isModal, setIsModal] = useState(false);
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
     setIsModal((preVal) => !preVal);
   };
+
+  const [isModal, setIsModal] = useState(false);
   const { getToken } = useAuth();
-  const logToken = async () => {
-    console.log(await getToken());
+  // const { user } = useUser();
+
+  const [quizData, setQuizData] = useState({
+    creator: "",
+    name: "",
+    topic: "",
+    difficulty: "",
+    isPublic: "public",
+    imageUrl: "",
+  });
+  const [quizOptions, setQuizOptions] = useState({
+    timePerQuestion: 30,
+    scorePerQuestion: 1,
+  });
+
+  // Khi thong tin quiz thay doi
+  const handleQuizDataChange = (e: any) => {
+    const { name, value } = e.target;
+    setQuizData({
+      ...quizData,
+      [name]: value,
+    });
   };
-  const { user } = useUser();
-  useEffect(() => {
-    if (user) {
-      logToken();
+
+  // Save
+  const handleSaveQuiz = async () => {
+    try {
+      const token = await getToken();
+
+      const formData = new FormData();
+      formData.append("creator", "User1");
+      formData.append("name", quizData.name);
+      formData.append("topic", quizData.topic);
+      formData.append("difficulty", quizData.difficulty);
+      formData.append("isPublic", quizData.isPublic);
+      formData.append("imageUrl", quizData.imageUrl);
+      formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
+      formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
+      const response = await fetch("http://localhost:5000/api/quiz", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        console.log("Quiz created!");
+      } else {
+        console.log("Loi tao quiz", data);
+      }
+    } catch (error) {
+      console.error("Error saving quiz:", error);
+      alert("Failed to save quiz. Please try again.");
     }
-  }, [user]);
+  };
+
   return (
     <div className="container mx-auto px-40">
-      <form action="">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSaveQuiz();
+        }}
+      >
         <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
           <div className="flex items-center gap-5">
             <NavLink to="/">
@@ -32,28 +87,33 @@ export default function CreateQuiz() {
               <p className="font-semibold">Please enter Quizz name</p>
             </div>
           </div>
-          <div className="flex items-center gap-5">
+          <button type="submit" className="flex items-center gap-5">
             <div className="p-3 flex items-center gap-2 cursor-pointer bg-nude-semibold btn-hover rounded font-semibold text-lg">
               <i className="fa-solid fa-floppy-disk"></i>
               <p>Save</p>
             </div>
-          </div>
+          </button>
         </nav>
         <main className="pt-28 grid grid-cols-8 gap-8">
-          <Quizbar />
+          <Quizbar quizOptions={quizOptions} setQuizOptions={setQuizOptions} />
 
           <div className="col-span-5">
             <div className="w-full px-8 py-5 bg-white rounded-lg col-span-5 box-shadow">
               <p className="text-xl mb-5">Quizz options</p>
               <div className="grid grid-cols-2 mb-2 gap-2">
                 <input
+                  name="name"
                   type="text"
+                  value={quizData.name}
+                  onChange={handleQuizDataChange}
                   placeholder="Enter Quizz name"
                   className="border p-2.5 text-sm font-semibold rounded-lg"
                 />
                 <select
-                  name="Topic"
+                  name="topic"
                   id="Topic"
+                  value={quizData.topic}
+                  onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
                   <option value="">Topic</option>
@@ -66,8 +126,10 @@ export default function CreateQuiz() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <select
-                  name="Difficulty"
+                  name="difficulty"
                   id="Difficulty"
+                  value={quizData.difficulty}
+                  onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
                   <option value="">Difficulty</option>
@@ -76,15 +138,22 @@ export default function CreateQuiz() {
                   <option value="hard">Hard</option>
                 </select>
                 <select
-                  name="Display"
+                  name="isPublic"
                   id="Display"
+                  value={quizData.isPublic}
+                  onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
                   <option value="public">Public</option>
                   <option value="Private">Private</option>
                 </select>
               </div>
-              <input className="mt-5" id="dropzone-file" type="file" />
+              <input
+                name="imageUrl"
+                className="mt-5"
+                id="dropzone-file"
+                type="file"
+              />
             </div>
             <div>
               <div className="flex  justify-between mt-5">

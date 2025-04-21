@@ -1,4 +1,10 @@
-export default function Quizbar() {
+export default function Quizbar({ quizOptions, setQuizOptions }: any) {
+  const handleChange = (e: any) => {
+    setQuizOptions((prevVal: any) => ({
+      ...prevVal,
+      [e.target.name]: e.target.value,
+    }));
+  };
   return (
     <div className="col-span-3">
       <div className=" mb-5 bg-white box-shadow rounded-lg">
@@ -6,7 +12,9 @@ export default function Quizbar() {
           <p className="text-xl mb-5">Bulk update questions</p>
           <div className="flex gap-2">
             <select
-              name="time"
+              name="timePerQuestion"
+              value={quizOptions.timePerQuestion}
+              onChange={handleChange}
               id="time"
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
@@ -18,8 +26,10 @@ export default function Quizbar() {
               <option value="90">1.5 minute</option>
             </select>
             <select
-              name="score"
+              name="scorePerQuestion"
               id="score"
+              value={quizOptions.scorePerQuestion}
+              onChange={handleChange}
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
               <option value="">Score</option>

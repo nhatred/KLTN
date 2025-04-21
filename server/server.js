@@ -5,10 +5,12 @@ import connectDB from "./configs/mongodb.js";
 import { clerkWebhooks } from "./controllers/webhooks.js";
 import { clerkMiddleware } from "@clerk/express";
 import quizRoutes from "./routes/quiz.js";
+import connectCloudinary from "./configs/cloudinary.js";
 
 const app = express();
 
 await connectDB();
+await connectCloudinary();
 
 app.use(cors());
 app.use(clerkMiddleware());

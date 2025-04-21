@@ -1,12 +1,31 @@
 import Quiz from "../models/Quiz.js";
+import { v2 as cloudinary } from "cloudinary";
 
 export async function createQuiz(req, res) {
   try {
     const userId = req.auth.userId;
     const quizData = req.body;
+    const imageFile = req.file;
+
+    if (!imageFile) {
+      return res.json({ success: false, message: "Image Quiz not attached" });
+    }
+
     quizData.creator = userId;
-    const newQuiz = await Quiz.create(quizData);
-    await newQuiz.save();
+    console.log(quizData);
+    try {
+      const newQuiz = await Quiz.create(quizData);
+      try {
+        const imageUpload = await cloudinary.uploader.upload(imageFile.path);
+        console.log("image" + imageUpload);
+        newQuiz.imageUrl = imageUpload.secure_url;
+      } catch (error) {
+        console.log("image  loi roi" + error);
+      }
+      await newQuiz.save();
+    } catch (error) {
+      console.log("Loi roi ban oi" + error);
+    }
 
     res.json({ success: true, message: "Quiz Add" });
   } catch (error) {

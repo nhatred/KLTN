@@ -14,9 +14,12 @@ const quizSchema = new mongoose.Schema(
       enum: ["easy", "medium", "hard"],
       required: true,
     },
-    isPublic: { type: Boolean, default: true },
-    timePerQuestion: { type: Number, required: true }, // in seconds
-    scorePerQuestion: { type: Number, required: true },
+    imageUrl: {
+      type: String,
+    },
+    isPublic: { type: String },
+    timePerQuestion: { type: Number }, // in seconds
+    scorePerQuestion: { type: Number },
     // questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
     questions: [],
     totalPlays: { type: Number, default: 0 },
