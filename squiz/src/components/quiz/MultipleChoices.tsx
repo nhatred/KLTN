@@ -7,8 +7,9 @@ export default function MultipleChoices({
   const [questionOptions, setQuestionOptions] = useState({
     questionType: "multipleChoices",
     questionText: "",
-    timePerQuestion: 30,
+    timePerQuestion: 15,
     scorePerQuestion: 1,
+    difficulty: "easy",
   });
   const [answers, setAnswers] = useState([
     { text: "", isCorrect: false },
@@ -17,18 +18,17 @@ export default function MultipleChoices({
     { text: "", isCorrect: false },
   ]);
   function randomColor() {
-    const number = Math.floor(Math.random() * 10);
+    const number = Math.floor(Math.random() * 1);
     const colors = [
-      "#FF0B55",
       "#FF8282",
-      "#FFD63A",
-      "#F7CFD8",
-      "#60B5FF",
-      "#8F87F1",
-      "#67AE6E",
-      "#FFD63A",
-      "#4D55CC",
-      "#F1E3D3",
+      // "#FFD63A",
+      // "#F7CFD8",
+      // "#60B5FF",
+      // "#8F87F1",
+      // "#67AE6E",
+      // "#FFD63A",
+      // "#4D55CC",
+      // "#F1E3D3",
     ];
     return colors[number];
   }
@@ -53,19 +53,38 @@ export default function MultipleChoices({
 
   const handleQuestionOptions = (e: any) => {
     const { name, value } = e.target;
-    setQuestionOptions((prevVal) => ({
-      ...prevVal,
+    setQuestionOptions({
+      ...questionOptions,
       [name]: value,
-    }));
+    });
   };
 
   const saveQuestion = () => {
     const questionData = {
       questionType: questionOptions.questionType,
+      questionText: questionOptions.questionText,
       timePerQuestion: questionOptions.timePerQuestion,
       scorePerQuestion: questionOptions.scorePerQuestion,
+      difficulty: questionOptions.difficulty,
       answers,
     };
+    switch (questionOptions.questionType) {
+      case "multipleChoices":
+        questionData.questionType = "Nhiều lựa chọn";
+        break;
+      case "fillInBlank":
+        questionData.questionType = "Điền vào chỗ trống";
+        break;
+      case "paragraph":
+        questionData.questionType = "Đoạn văn";
+        break;
+      case "dragAndDrop":
+        questionData.questionType = "Kéo và thả";
+        break;
+      case "dropdown":
+        questionData.questionType = "Thả xuống";
+        break;
+    }
     getDataForm(questionData);
   };
 
@@ -93,30 +112,41 @@ export default function MultipleChoices({
             </select>
 
             <select
-              name="time"
+              name="timePerQuestion"
               id="time"
+              value={questionOptions.timePerQuestion}
               onChange={handleQuestionOptions}
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
-              <option value="">Thời gian</option>
-              <option value="15">15 giây</option>
-              <option value="30">30 giây</option>
-              <option value="45">45 giây</option>
-              <option value="60">1 phút</option>
-              <option value="90">1.5 phút</option>
+              <option value={15}>15 giây</option>
+              <option value={30}>30 giây</option>
+              <option value={45}>45 giây</option>
+              <option value={60}>1 phút</option>
+              <option value={90}>1.5 phút</option>
             </select>
             <select
-              name="score"
+              name="scorePerQuestion"
               id="score"
+              value={questionOptions.scorePerQuestion}
               onChange={handleQuestionOptions}
               className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
             >
-              <option value="">Điểm</option>
-              <option value="1">1 điểm</option>
-              <option value="2">2 điểm</option>
-              <option value="3">3 điểm</option>
-              <option value="4">4 điểm</option>
-              <option value="5">5 điểm</option>
+              <option value={1}>1 điểm</option>
+              <option value={2}>2 điểm</option>
+              <option value={3}>3 điểm</option>
+              <option value={4}>4 điểm</option>
+              <option value={5}>5 điểm</option>
+            </select>
+            <select
+              name="difficulty"
+              id="difficulty"
+              value={questionOptions.difficulty}
+              onChange={handleQuestionOptions}
+              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            >
+              <option value="easy">Dễ</option>
+              <option value="medium">Trung bình</option>
+              <option value="hard">Khó</option>
             </select>
           </div>
           <div

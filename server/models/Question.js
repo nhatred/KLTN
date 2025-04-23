@@ -19,6 +19,10 @@ const questionSchema = new mongoose.Schema(
       ],
       required: true,
     },
+    difficulty: {
+      type: String,
+      enum: ["easy", "medium", "hard"],
+    },
     // For multiple choice and dropdown
     options: [
       {
@@ -39,10 +43,12 @@ const questionSchema = new mongoose.Schema(
       },
     ],
     // Store correct answer based on question type
-    correctAnswer: {
-      type: mongoose.Schema.Types.Mixed, // Can be string, array, or object based on questionType
-      required: true,
-    },
+    answers: [
+      {
+        text: { type: String, required: true },
+        isCorrect: { type: Boolean, required: true },
+      },
+    ],
   },
   { timestamps: true }
 );

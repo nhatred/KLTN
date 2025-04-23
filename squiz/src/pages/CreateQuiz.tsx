@@ -1,8 +1,19 @@
 import { NavLink } from "react-router";
 import Quizbar from "../components/Quizbar";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import MultipleChoices from "../components/quiz/MultipleChoices";
+
+interface Question {
+  questionId: number;
+  quizId: string;
+  questionType: string;
+  questionText: string;
+  timePerQuestion: number;
+  scorePerQuestion: number;
+  difficulty: string;
+  answers: any[];
+}
 
 export default function CreateQuiz() {
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
@@ -22,49 +33,79 @@ export default function CreateQuiz() {
     questions: [{}],
     imageUrl: null,
   });
-  const [questions, setQuestions] = useState([{}]);
-  // const questions = Array<any>();
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [imageData, setImageData] = useState<File | null>(null);
   const [quizOptions, setQuizOptions] = useState({
     timePerQuestion: 30,
     scorePerQuestion: 1,
   });
+  useEffect(() => {
+    console.log(questions);
+  }, [questions]);
 
-  // Them cau hoi
-  // const addQuestion = () => {
-  //   const newQuestion = {
-  //     tempId: Date.now(),
-  //     questionText: "",
-  //     questionType: "",
-  //     answers: [],
-  //   };
-  //   setQuestions((prevVal) => ({
-  //     ...prevVal,
-  //     newQuestion,
-  //   }));
-  // };
   const handleGetDataForm = (data: any) => {
     const newQuestion = {
       questionId: Date.now(),
+      quizId: "",
       questionType: data.questionType,
+      questionText: data.questionText,
       timePerQuestion: data.timePerQuestion,
       scorePerQuestion: data.scorePerQuestion,
+      difficulty: data.difficulty,
       answers: data.answers,
     };
+    switch (data.questionType) {
+      case "Nhiều lựa chọn":
+        newQuestion.questionType = "multipleChoices";
+        break;
+      case "Điền vào chỗ trống":
+        newQuestion.questionType = "fillInBlank";
+        break;
+      case "Đoạn văn":
+        newQuestion.questionType = "paragraph";
+        break;
+      case "Kéo và thả":
+        newQuestion.questionType = "dragAndDrop";
+        break;
+      case "Thả xuống":
+        newQuestion.questionType = "dropdown";
+        break;
+    }
     setQuestions((prevVal) => [...prevVal, newQuestion]);
-    questions.push(newQuestion);
   };
-  // Update question
-  // const updateQuestion = (tempId: any, field: any, value: any) => {
-  //   const updateQuestions = questions.map((question: any) =>
-  //     question.tempId === tempId ? { ...question, [field]: value } : question
-  //   );
-  //   setQuestions(updateQuestions);
-  // };
 
-  // const removeQuestion = (tempId: any) => {
-  //   setQuestions(questions.filter((q) => q.tempId !== tempId));
-  // };
+  // UPDATE CAU HOI
+  const handleQuestionUpdate = (e: any, questionId: number | string) => {
+    const { name, value } = e.target;
+
+    setQuestions((prevQuestions) =>
+      prevQuestions.map((question) =>
+        question.questionId === questionId
+          ? {
+              ...question,
+              [name]: value,
+            }
+          : question
+      )
+    );
+  };
+
+  // SAO CHEP CAU HOI
+  const duplicateQuestion = (question: any) => {
+    const duplicatedQuestion = {
+      ...question,
+      questionId: Date.now(),
+    };
+
+    setQuestions((prevQuestions) => [...prevQuestions, duplicatedQuestion]);
+  };
+
+  // XOA CAU HOI
+  const deleteQuestion = (questionId: any) => {
+    setQuestions((prevQuestions) =>
+      prevQuestions.filter((q) => q.questionId !== questionId)
+    );
+  };
 
   // Khi thong tin quiz thay doi
   const handleQuizDataChange = (e: any) => {
@@ -86,12 +127,14 @@ export default function CreateQuiz() {
     setIsModal((prevVal) => !prevVal);
   };
 
-  // const handleGetDataForm = (data: any) => {
-  //   setQuizData((prevVal) => ({
-  //     ...prevVal,
-  //     questions: [...prevVal.questions, data],
-  //   }));
-  // };
+  const totalScoreOfQuiz = () => {
+    let totalScore = 0;
+    questions.map((question) => {
+      console.log(question.scorePerQuestion);
+      totalScore += Number(question.scorePerQuestion);
+    });
+    return totalScore;
+  };
 
   // Save
   const handleSaveQuiz = async () => {
@@ -115,37 +158,55 @@ export default function CreateQuiz() {
         body: formData,
       });
 
-      const data = await response.json();
-      if (response.ok) {
-        console.log("Quiz created!");
-        const quizId = data._id;
-        const questionPromises = questions.map((question) => {
-          const { questionId, ...questionData } = question;
-          questionData.quizId = quizId;
-          return fetch("http://localhost:5000/api/question", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(questionData),
-          }).then((res) => res.json());
-        });
-        await Promise.all(questionPromises);
-      } else {
-        console.log("Loi tao quiz", data);
+      const quizResult = await response.json();
+      if (!quizResult.success) {
+        throw new Error(quizResult.message || "Cannot created new Quiz");
       }
+      // Thay vì cập nhật state, tạo một bản sao mới của questions với quizId đã cập nhật
+      const updatedQuestions = questions.map((question) => ({
+        ...question,
+        quizId: quizResult._id,
+      }));
+      await handleSaveQuestion(updatedQuestions);
     } catch (error) {
       console.error("Error saving quiz:", error);
       alert("Failed to save quiz. Please try again.");
     }
   };
-
+  const handleSaveQuestion = async (questionsToSave = questions) => {
+    try {
+      const token = await getToken();
+      const response = await fetch("http://localhost:5000/api/question", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          questions: questionsToSave.map((question) => ({
+            quizId: question.quizId,
+            questionText: question.questionText,
+            questionType: question.questionType,
+            difficulty: question.difficulty,
+            timePerQuestion: question.timePerQuestion,
+            scorePerQuestion: question.scorePerQuestion,
+            answers: question.answers.map((answer) => ({
+              text: answer.text,
+              isCorrect: answer.isCorrect,
+            })),
+          })),
+        }),
+      });
+      await response.json();
+    } catch (error) {
+      console.error("Error saving quiz:", error);
+    }
+  };
   return (
-    <div className="container mx-auto px-40">
+    <div className="container mx-auto px-10">
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          handleSaveQuiz();
         }}
       >
         <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
@@ -159,7 +220,12 @@ export default function CreateQuiz() {
               <p className="font-semibold">Please enter Quizz name</p>
             </div>
           </div>
-          <button type="submit" className="flex items-center gap-5">
+          <button
+            onClick={() => {
+              handleSaveQuiz();
+            }}
+            className="flex items-center gap-5"
+          >
             <div className="p-3 flex items-center gap-2 cursor-pointer bg-nude-semibold btn-hover rounded font-semibold text-lg">
               <i className="fa-solid fa-floppy-disk"></i>
               <p>Save</p>
@@ -171,14 +237,14 @@ export default function CreateQuiz() {
 
           <div className="col-span-5">
             <div className="w-full px-8 py-5 bg-white rounded-lg col-span-5 box-shadow">
-              <p className="text-xl mb-5">Quizz options</p>
+              <p className="text-xl mb-5">Thông tin Quiz</p>
               <div className="grid grid-cols-2 mb-2 gap-2">
                 <input
                   name="name"
                   type="text"
                   value={quizData.name}
                   onChange={handleQuizDataChange}
-                  placeholder="Enter Quizz name"
+                  placeholder="Nhập tên Quiz"
                   className="border p-2.5 text-sm font-semibold rounded-lg"
                 />
                 <select
@@ -188,12 +254,12 @@ export default function CreateQuiz() {
                   onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
-                  <option value="">Topic</option>
-                  <option value="math">Math</option>
-                  <option value="english">English</option>
-                  <option value="physics">Physics</option>
-                  <option value="history">History</option>
-                  <option value="other">Other</option>
+                  <option value="">Chủ đề</option>
+                  <option value="math">Toán</option>
+                  <option value="english">Tiếng Anh</option>
+                  <option value="physics">Vật lý</option>
+                  <option value="history">Lịch sử</option>
+                  <option value="other">Khác</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -204,10 +270,10 @@ export default function CreateQuiz() {
                   onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
-                  <option value="">Difficulty</option>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
+                  <option value="">Độ khó</option>
+                  <option value="easy">Dễ</option>
+                  <option value="medium">Trung bình</option>
+                  <option value="hard">Khó</option>
                 </select>
                 <select
                   name="isPublic"
@@ -216,8 +282,8 @@ export default function CreateQuiz() {
                   onChange={handleQuizDataChange}
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
-                  <option value="public">Public</option>
-                  <option value="Private">Private</option>
+                  <option value="public">Công khai</option>
+                  <option value="Private">Riêng tư</option>
                 </select>
               </div>
               <input
@@ -232,99 +298,129 @@ export default function CreateQuiz() {
                 alt=""
               />
             </div>
+
             <div>
               <div className="flex  justify-between mt-5">
-                <p className="text-xl">1 question (3 points)</p>
+                <p className="text-xl">
+                  {questions.length} Câu hỏi ({totalScoreOfQuiz()} điểm)
+                </p>
                 <div
                   onClick={handleClickModal}
                   className="flex hover:bg-gray-50 cursor-pointer bg-white border-orange-semibold border-1 items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
                 >
                   <i className="fa-solid fa-plus"></i>
-                  <p>New question</p>
+                  <p>Câu hỏi mới</p>
                 </div>
               </div>
               <div>
-                <div className="w-full px-8 py-5 mt-5 bg-white rounded-lg col-span-5 box-shadow">
-                  <div className=" flex justify-between">
-                    <div className="flex gap-2">
-                      <div className="border cursor-grab p-2 rounded flex items-center">
-                        <i className="fa-solid fa-align-justify"></i>
+                {questions.map((question) => (
+                  <div
+                    key={question.questionId}
+                    className="w-full px-8 py-5 mt-5 bg-white rounded-lg col-span-5 box-shadow"
+                  >
+                    <div className=" flex justify-between">
+                      <div className="flex gap-2">
+                        <div className="border cursor-grab p-2 rounded flex items-center">
+                          <i className="fa-solid fa-align-justify"></i>
+                        </div>
+                        <div className="border p-2 rounded flex items-center gap-2">
+                          <i className="fa-regular fa-circle-check"></i>
+                          <p className="text-sm">{question.questionType}</p>
+                        </div>
+                        <div>
+                          <select
+                            name="timePerQuestion"
+                            id="time"
+                            value={question.timePerQuestion}
+                            onChange={(e) =>
+                              handleQuestionUpdate(e, question.questionId)
+                            }
+                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                          >
+                            {[15, 30, 45, 60, 90].map((time) => (
+                              <option key={time} value={time}>
+                                {time} giây
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <select
+                            name="scorePerQuestion"
+                            id="score"
+                            value={question.scorePerQuestion}
+                            onChange={(e) =>
+                              handleQuestionUpdate(e, question.questionId)
+                            }
+                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                          >
+                            {[1, 2, 3, 4, 5].map((score) => (
+                              <option key={score} value={score}>
+                                {score} điểm
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <select
+                            name="difficulty"
+                            id="difficulty"
+                            value={question.difficulty}
+                            onChange={(e) =>
+                              handleQuestionUpdate(e, question.questionId)
+                            }
+                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                          >
+                            {["ease", "medium", "hard"].map((difficulty) => (
+                              <option key={difficulty} value={difficulty}>
+                                {difficulty === "easy"
+                                  ? "Dễ"
+                                  : difficulty === "medium"
+                                  ? "Trung bình"
+                                  : "Khó"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                      <div className="border p-2 rounded flex items-center gap-2">
-                        <i className="fa-regular fa-circle-check"></i>
-                        <p className="text-sm">Multi option</p>
-                      </div>
-                      <div>
-                        <select
-                          name="time"
-                          id="time"
-                          className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                      <div className="flex gap-2">
+                        <div
+                          onClick={() => duplicateQuestion(question)}
+                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
                         >
-                          <option value="">Time</option>
-                          <option value="15">15 second</option>
-                          <option value="30">30 second</option>
-                          <option value="45">45 second</option>
-                          <option value="60">1 minute</option>
-                          <option value="90">1.5 minute</option>
-                        </select>
-                      </div>
-                      <div>
-                        <select
-                          name="score"
-                          id="score"
-                          className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                        >
-                          <option value="">Score</option>
-                          <option value="1">1 point</option>
-                          <option value="2">2 point</option>
-                          <option value="3">3 point</option>
-                          <option value="4">4 point</option>
-                          <option value="5">5 point</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2">
-                        <i className="fa-regular fa-copy"></i>
-                      </div>
-                      <div className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2">
-                        <i className="fa-regular fa-pen-to-square"></i>
-                        <p className="text-sm">Edit</p>
-                      </div>
+                          <i className="fa-regular fa-copy"></i>
+                        </div>
+                        <div className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2">
+                          <i className="fa-regular fa-pen-to-square"></i>
+                          <p className="text-sm">Chỉnh sửa</p>
+                        </div>
 
-                      <div className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2">
-                        <i className="fa-regular fa-trash-can"></i>
+                        <div
+                          onClick={() => deleteQuestion(question.questionId)}
+                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
+                        >
+                          <i className="fa-regular fa-trash-can"></i>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-5">
+                      <p>{question.questionText}</p>
+                      <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
+                      <div className="grid grid-cols-2 grid-rows-2 gap-2">
+                        {question.answers.map((answer, key) => (
+                          <div key={key} className="flex items-center gap-2">
+                            {answer.isCorrect ? (
+                              <i className="text-emerald fa-solid fa-check"></i>
+                            ) : (
+                              <i className="text-red-wine fa-solid fa-xmark"></i>
+                            )}
+                            <p>{answer.text}</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
-                  <div className="mt-5">
-                    <p>
-                      Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                      Culpa, molestiae veniam magni voluptate officia placeat
-                      unde ipsa asperiores deserunt laboriosam quia, accusamus
-                      pariatur dolorum modi earum odio quaerat, ipsum optio?
-                    </p>
-                    <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
-                    <div className="grid grid-cols-2 grid-rows-2 gap-2">
-                      <div className="flex items-center gap-2">
-                        <i className="text-emerald fa-solid fa-check"></i>
-                        <p>Answer 1</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <i className="text-red-wine fa-solid fa-xmark"></i>
-                        <p>Answer 12</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <i className="text-red-wine fa-solid fa-xmark"></i>
-                        <p>Answer 13</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <i className="text-red-wine fa-solid fa-xmark"></i>
-                        <p>Answer 15</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ))}
 
                 {/* New Question */}
                 <div className="flex justify-center mt-5">

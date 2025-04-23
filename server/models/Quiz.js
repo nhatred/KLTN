@@ -21,7 +21,6 @@ const quizSchema = new mongoose.Schema(
     timePerQuestion: { type: Number }, // in seconds
     scorePerQuestion: { type: Number },
     questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
-    // questions: [],
     totalPlays: { type: Number, default: 0 },
     quizRatings: [
       { userId: { type: String }, rating: { type: Number, min: 1, max: 5 } },

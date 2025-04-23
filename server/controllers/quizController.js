@@ -27,13 +27,14 @@ export async function createQuiz(req, res) {
         });
       }
       const newQuiz = await Quiz.create(quizData);
-      console.log(newQuiz);
-      await newQuiz.save();
+      res.json({
+        success: true,
+        message: "Quiz Added Success!",
+        _id: newQuiz._id,
+      });
     } catch (error) {
       console.log("Error Create New Quiz" + error);
     }
-
-    res.json({ success: true, message: "Quiz Add" });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
