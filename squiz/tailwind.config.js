@@ -4,15 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        "nude-light": "#FFF3E0", // Be sáng
-        "brown-dark": "#4E342E", // Nâu đậm
-        "blue-deep": "#1E88E5", // Xanh dương trầm
-        "orange-soft": "#FFAB91", // Cam nhạt
+        orange: "#FF7C4D",
         emerald: "#009688", // Xanh lục bảo
         "red-wine": "#C62828", // Đỏ đô
-        "orange-semibold": "#F09F87", //Cam đậm
-        "nude-semibold": "#ffebcc",
         modal: "rgba(0, 0, 0, 0.6)",
+        background: "#fcfbfa",
+        darkblue: "#153a43",
+        dim: "#829095",
       },
       borderWidth: {
         1: "1px",

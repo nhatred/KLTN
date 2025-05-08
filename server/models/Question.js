@@ -19,6 +19,8 @@ const questionSchema = new mongoose.Schema(
       ],
       required: true,
     },
+    timePerQuestion: { type: Number }, // in seconds
+    scorePerQuestion: { type: Number },
     difficulty: {
       type: String,
       enum: ["easy", "medium", "hard"],

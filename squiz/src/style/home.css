@@ -1,0 +1,23 @@
+.dark_gradient {
+  z-index: 1;
+  background-image: linear-gradient(#153a4300 65%, #000c);
+  position: absolute;
+  inset: 0%;
+}
+
+.noise {
+  opacity: 0.25;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  background-image: url("https://cdn.prod.website-files.com/68011fed23249a9699d7b42b/6807e0c24176475123a57376_noise-light.png");
+  background-position: 50%;
+  background-size: 220px 220px;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0%;
+}
+
+.noise.is-hero {
+  opacity: 0.5;
+}

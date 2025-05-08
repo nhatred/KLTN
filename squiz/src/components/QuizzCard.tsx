@@ -1,16 +1,69 @@
-export default function QuizzCard() {
+// import { format } from "date-fns";
+import { NavLink } from "react-router";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  PlayIcon,
+  Bookmark02Icon,
+  HelpSquareIcon,
+} from "@hugeicons/core-free-icons";
+import "../style/quizcard.css";
+import "../style/dashboard.css";
+
+export default function QuizzCard({ quiz }: any) {
   return (
-    <div className="box-shadow-hover h-56 relative rounded-lg overflow-hidden box-shadow">
-      <div className="bg-white h-full w-full absolute flex items-end bottom-0 px-3 pb-8">
-        <p className="text-lg font-semibold">Toán Cộng Trừ Nhân Chia</p>
+    <NavLink
+      to={`/edit-quiz/${quiz._id}`}
+      className="bg-white box-shadow flex flex-col quizcard_component justify-between rounded overflow-hidden"
+    >
+      <div className="relative quizcard_component">
+        <img className="w-full rounded-t-2xl" src={quiz.imageUrl} alt="" />
+        <div className="grain rounded-2xl"></div>
+        <div className="noise rounded-2xl"></div>
       </div>
-      <div className="">
-        <img
-          className="w-full rounded-edge object-cover"
-          src="/assets/unnamed.png"
-          alt=""
-        />
+      <div className="p-5 ">
+        <div className="flex justify-between items-start gap-2">
+          <p className="text-lg font-semibold  line-clamp-2 ">{quiz.name}</p>
+          <p
+            className={`py-1 px-3 text-sm text-background font-semibold rounded-full
+                      ${
+                        quiz.difficulty == "easy"
+                          ? "bg-darkblue"
+                          : quiz.difficulty === "medium"
+                          ? "bg-darkblue"
+                          : "bg-darkblue"
+                      }`}
+          >
+            {quiz.difficulty}
+          </p>
+        </div>
+        <div className="flex gap-2 justify-between items-start mt-2">
+          <div className="flex gap-2">
+            <div className="flex gap-1 items-center">
+              <HugeiconsIcon icon={HelpSquareIcon} size={20} />
+              <p className="text-sm">{quiz.questions.length} câu hỏi</p>
+            </div>
+            <div className="flex gap-1 items-center">
+              <HugeiconsIcon icon={Bookmark02Icon} size={18} />
+              <p className="text-sm">{quiz.topic}</p>
+            </div>
+          </div>
+
+          {/* <div>
+            <p className="text-xs">
+              {format(new Date(quiz.createdAt), "dd-MM-yyyy")}
+            </p>
+          </div> */}
+        </div>
+        <div className="grain  rounded-2xl"></div>
+        <div className="noise  rounded-2xl"></div>
       </div>
-    </div>
+
+      <div className="flex px-5 pb-5 justify-between mt-10 items-center">
+        <p className="text-sm font-bold">{quiz.totalPlays} người đã chơi</p>
+        <div className="h-10 w-10 flex justify-center items-center rounded-full bg-darkblue">
+          <HugeiconsIcon icon={PlayIcon} color="background" />
+        </div>
+      </div>
+    </NavLink>
   );
 }

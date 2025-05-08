@@ -23,6 +23,7 @@ app.get("/", (req, res) => {
 app.post("/clerk", clerkWebhooks);
 app.use("/api/quiz", quizRoutes);
 app.use("/api/question", questionRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

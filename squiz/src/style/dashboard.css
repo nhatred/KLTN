@@ -1,0 +1,38 @@
+.empower_component {
+  border-radius: 16px;
+  background-color: #f5f3ee;
+  background-image: linear-gradient(218deg, #ffdfe01a 48%, #efd9e399);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+  position: relative;
+  overflow: visible;
+}
+
+.noise {
+  opacity: 0.25;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  background-image: url("/assets/cards/noise.png");
+  background-position: 50%;
+  background-size: 220px 220px;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0%;
+}
+
+.grain {
+  z-index: 0;
+  border-radius: 16px;
+  opacity: 0.1;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background-image: url("/assets/cards/grain.avif");
+  background-position: 0 0;
+  background-size: auto;
+  position: absolute;
+  inset: 0%;
+  overflow: clip;
+}

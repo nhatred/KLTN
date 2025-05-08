@@ -1,28 +1,64 @@
-import { NavLink } from "react-router";
+import { useNavigate } from "react-router";
 import Quizbar from "../components/Quizbar";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
-import MultipleChoices from "../components/quiz/MultipleChoices";
+import MultipleChoices from "../components/MultipleChoices";
+import { useForm } from "react-hook-form";
+import { toast } from "react-hot-toast";
+import { Question } from "../types/Question";
+import { EditQuestionModal } from "../components/EditQuestionModal";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Backward01Icon,
+  ImageUploadIcon,
+  CursorMagicSelection03Icon,
+  Drag04Icon,
+  ArtboardToolIcon,
+  ArrowDown01Icon,
+  TextAlignJustifyCenterIcon,
+  NoteEditIcon,
+  Copy01Icon,
+  Delete01Icon,
+  Tick01Icon,
+  Cancel01Icon,
+} from "@hugeicons/core-free-icons";
 
-interface Question {
-  questionId: number;
-  quizId: string;
-  questionType: string;
-  questionText: string;
-  timePerQuestion: number;
-  scorePerQuestion: number;
-  difficulty: string;
-  answers: any[];
-}
+const QUESTION_TYPES = {
+  MULTIPLE_CHOICE: "multipleChoices",
+  FILL_IN_BLANK: "fillInBlank",
+  PARAGRAPH: "paragraph",
+  DRAG_AND_DROP: "dragAndDrop",
+  DROPDOWN: "dropdown",
+};
+
+const DIFFICULTY_OPTIONS = [
+  { value: "easy", label: "Dễ" },
+  { value: "medium", label: "Trung bình" },
+  { value: "hard", label: "Khó" },
+];
+
+const TIME_OPTIONS = [15, 30, 45, 60, 90];
+const SCORE_OPTIONS = [1, 2, 3, 4, 5];
+const API_BASE_URL = "http://localhost:5000/api";
 
 export default function CreateQuiz() {
+  const navigate = useNavigate();
+
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
     setIsModal((preVal) => !preVal);
   };
 
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
+
   const [isModal, setIsModal] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false); //Modal Update Question
   const { getToken } = useAuth();
   const [isFormQuestion, setIsFormQuestion] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
 
   const [quizData, setQuizData] = useState({
     creator: "",
@@ -39,39 +75,54 @@ export default function CreateQuiz() {
     timePerQuestion: 30,
     scorePerQuestion: 1,
   });
+
+  const [questionsIsVoid, setQuestionsIsVoid] = useState(false);
+
   useEffect(() => {
-    console.log(questions);
+    setQuestionsIsVoid(questions.length < 1);
   }, [questions]);
 
+  useEffect(() => {
+    setQuestions((prevQuestions) =>
+      prevQuestions.map((question) => ({
+        ...question,
+        timePerQuestion: quizOptions.timePerQuestion,
+        scorePerQuestion: quizOptions.scorePerQuestion,
+      }))
+    );
+  }, [quizOptions]);
+
+  const handleEditClick = (question: any) => {
+    setCurrentQuestion(question);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setCurrentQuestion(null);
+  };
+
   const handleGetDataForm = (data: any) => {
+    const questionTypeMapping: Record<string, string> = {
+      "Nhiều lựa chọn": QUESTION_TYPES.MULTIPLE_CHOICE,
+      "Điền vào chỗ trống": QUESTION_TYPES.FILL_IN_BLANK,
+      "Đoạn văn": QUESTION_TYPES.PARAGRAPH,
+      "Kéo và thả": QUESTION_TYPES.DRAG_AND_DROP,
+      "Thả xuống": QUESTION_TYPES.DROPDOWN,
+    };
+
     const newQuestion = {
       questionId: Date.now(),
       quizId: "",
-      questionType: data.questionType,
+      questionType: questionTypeMapping[data.questionType] || data.questionType,
       questionText: data.questionText,
-      timePerQuestion: data.timePerQuestion,
-      scorePerQuestion: data.scorePerQuestion,
+      timePerQuestion: Number(data.timePerQuestion),
+      scorePerQuestion: Number(data.scorePerQuestion),
       difficulty: data.difficulty,
       answers: data.answers,
     };
-    switch (data.questionType) {
-      case "Nhiều lựa chọn":
-        newQuestion.questionType = "multipleChoices";
-        break;
-      case "Điền vào chỗ trống":
-        newQuestion.questionType = "fillInBlank";
-        break;
-      case "Đoạn văn":
-        newQuestion.questionType = "paragraph";
-        break;
-      case "Kéo và thả":
-        newQuestion.questionType = "dragAndDrop";
-        break;
-      case "Thả xuống":
-        newQuestion.questionType = "dropdown";
-        break;
-    }
     setQuestions((prevVal) => [...prevVal, newQuestion]);
+    toast.success("Thêm câu hỏi thành công");
   };
 
   // UPDATE CAU HOI
@@ -98,6 +149,7 @@ export default function CreateQuiz() {
     };
 
     setQuestions((prevQuestions) => [...prevQuestions, duplicatedQuestion]);
+    toast.success("Question duplicated");
   };
 
   // XOA CAU HOI
@@ -138,6 +190,10 @@ export default function CreateQuiz() {
 
   // Save
   const handleSaveQuiz = async () => {
+    if (questions.length < 1) {
+      setQuestionsIsVoid(true);
+      return;
+    }
     try {
       const token = await getToken();
       const formData = new FormData();
@@ -150,7 +206,7 @@ export default function CreateQuiz() {
       // formData.append("questions", JSON.stringify(quizData.questions || []));
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
-      const response = await fetch("http://localhost:5000/api/quiz", {
+      const response = await fetch(`${API_BASE_URL}/quiz`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -162,7 +218,7 @@ export default function CreateQuiz() {
       if (!quizResult.success) {
         throw new Error(quizResult.message || "Cannot created new Quiz");
       }
-      // Thay vì cập nhật state, tạo một bản sao mới của questions với quizId đã cập nhật
+
       const updatedQuestions = questions.map((question) => ({
         ...question,
         quizId: quizResult._id,
@@ -173,10 +229,22 @@ export default function CreateQuiz() {
       alert("Failed to save quiz. Please try again.");
     }
   };
-  const handleSaveQuestion = async (questionsToSave = questions) => {
+
+  const handleUpdateQuestion = (updatedQuestion: Question) => {
+    setQuestions((prev) =>
+      prev.map((q) =>
+        q.questionId === updatedQuestion.questionId ? updatedQuestion : q
+      )
+    );
+  };
+
+  const handleSaveQuestion = async (
+    questionsToSave: Question[] = questions
+  ) => {
+    console.log(questionsToSave);
     try {
       const token = await getToken();
-      const response = await fetch("http://localhost:5000/api/question", {
+      const response = await fetch(`${API_BASE_URL}/question`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -197,11 +265,21 @@ export default function CreateQuiz() {
           })),
         }),
       });
-      await response.json();
+
+      const result = await response.json();
+      if (result.success) {
+        // Cập nhật state với câu hỏi từ server (có _id thực)
+        setQuestions(result.questions);
+        return result;
+      } else {
+        throw new Error(result.message || "Failed to save questions");
+      }
     } catch (error) {
-      console.error("Error saving quiz:", error);
+      console.error("Error saving questions:", error);
+      return { success: false, error };
     }
   };
+
   return (
     <div className="container mx-auto px-10">
       <form
@@ -211,24 +289,23 @@ export default function CreateQuiz() {
       >
         <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
           <div className="flex items-center gap-5">
-            <NavLink to="/">
-              <h1 className="border-1 bg-white w-8 h-8 flex items-center justify-center rounded font-black">
-                <i className="fa-solid fa-arrow-left"></i>
-              </h1>
-            </NavLink>
-            <div className=" h-10 px-2 hover:bg-nude-light rounded cursor-pointer flex items-center">
+            <div 
+              onClick={() => navigate(-1)}
+              className="cursor-pointer flex items-center justify-center rounded font-black hover:bg-gray-100 p-2"
+            >
+              <HugeiconsIcon icon={Backward01Icon} />
+            </div>
+            <div className=" h-10 hover:bg-nude-light rounded cursor-pointer flex items-center">
               <p className="font-semibold">Please enter Quizz name</p>
             </div>
           </div>
           <button
-            onClick={() => {
-              handleSaveQuiz();
-            }}
+            onClick={handleSubmit(handleSaveQuiz)}
             className="flex items-center gap-5"
           >
-            <div className="p-3 flex items-center gap-2 cursor-pointer bg-nude-semibold btn-hover rounded font-semibold text-lg">
+            <div className="p-3 flex items-center gap-2 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
               <i className="fa-solid fa-floppy-disk"></i>
-              <p>Save</p>
+              <p>Lưu Squiz</p>
             </div>
           </button>
         </nav>
@@ -237,22 +314,28 @@ export default function CreateQuiz() {
 
           <div className="col-span-5">
             <div className="w-full px-8 py-5 bg-white rounded-lg col-span-5 box-shadow">
-              <p className="text-xl mb-5">Thông tin Quiz</p>
+              <p className="text-xl mb-5">Thông tin Squiz</p>
               <div className="grid grid-cols-2 mb-2 gap-2">
                 <input
-                  name="name"
+                  {...register("name", {
+                    required: "Tên quiz không được để trống",
+                  })}
                   type="text"
                   value={quizData.name}
                   onChange={handleQuizDataChange}
                   placeholder="Nhập tên Quiz"
-                  className="border p-2.5 text-sm font-semibold rounded-lg"
+                  className={`border p-2.5 text-sm font-semibold rounded-lg
+                  ${errors.name ? "border-red-wine" : "border-gray-300"}`}
                 />
                 <select
-                  name="topic"
+                  {...register("topic", {
+                    required: "Topic không được để trống",
+                  })}
                   id="Topic"
                   value={quizData.topic}
                   onChange={handleQuizDataChange}
-                  className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                  className={`bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500  block w-full p-2.5 font-semibold
+                    ${errors.topic ? "border-red-wine" : "border-gray-300"}`}
                 >
                   <option value="">Chủ đề</option>
                   <option value="math">Toán</option>
@@ -264,16 +347,23 @@ export default function CreateQuiz() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <select
-                  name="difficulty"
+                  {...register("difficulty", {
+                    required: "Độ khó không được để trống",
+                  })}
                   id="Difficulty"
                   value={quizData.difficulty}
                   onChange={handleQuizDataChange}
-                  className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                  className={`bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500  block w-full p-2.5 font-semibold
+                    ${
+                      errors.difficulty ? "border-red-wine" : "border-gray-300"
+                    }`}
                 >
                   <option value="">Độ khó</option>
-                  <option value="easy">Dễ</option>
-                  <option value="medium">Trung bình</option>
-                  <option value="hard">Khó</option>
+                  {DIFFICULTY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <select
                   name="isPublic"
@@ -283,20 +373,51 @@ export default function CreateQuiz() {
                   className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                 >
                   <option value="public">Công khai</option>
-                  <option value="Private">Riêng tư</option>
+                  <option value="private">Riêng tư</option>
                 </select>
               </div>
-              <input
-                accept="image/*"
-                name="imageUrl"
-                className="mt-5"
-                type="file"
-                onChange={handleImageUpload}
-              />
-              <img
-                src={imageData ? URL.createObjectURL(imageData) : ""}
-                alt=""
-              />
+              <div className="relative">
+                <input
+                  accept="image/*"
+                  {...register("imageUrl", {
+                    required: "Hình ảnh phải có",
+                  })}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  type="file"
+                  onChange={handleImageUpload}
+                  id="image-upload"
+                />
+
+                <label
+                  htmlFor="image-upload"
+                  className="cursor-pointer flex items-center gap-1 mt-5 mb-2"
+                >
+                  <HugeiconsIcon
+                    size={30}
+                    icon={ImageUploadIcon}
+                    className="text-2xl text-gray-500 hover:text-orange transition-colors"
+                  />{" "}
+                  <p className="text-md font-semibold">Tải ảnh nền cho Squiz</p>
+                </label>
+              </div>
+              {errors.imageUrl && (
+                <p className="mt-2 text-red-wine text-sm">
+                  Vui lòng chọn ảnh nền cho squiz
+                </p>
+              )}
+              {imageData && (
+                <div className="flex">
+                  <img
+                    src={
+                      imageData
+                        ? URL.createObjectURL(imageData)
+                        : "/assets/notfound.jpg"
+                    }
+                    alt="image data"
+                    className=" rounded-lg w-80"
+                  />
+                </div>
+              )}
             </div>
 
             <div>
@@ -306,12 +427,20 @@ export default function CreateQuiz() {
                 </p>
                 <div
                   onClick={handleClickModal}
-                  className="flex hover:bg-gray-50 cursor-pointer bg-white border-orange-semibold border-1 items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+                  className="flex cursor-pointer bg-darkblue btn-hover text-background items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
                 >
                   <i className="fa-solid fa-plus"></i>
                   <p>Câu hỏi mới</p>
                 </div>
               </div>
+              {questionsIsVoid && (
+                <div className="flex justify-center border border-red-500 p-2 my-2">
+                  <p className="text-red-wine text-sm font-semibold">
+                    Vui lòng nhập ít nhất 1 câu hỏi
+                  </p>
+                </div>
+              )}
+
               <div>
                 {questions.map((question) => (
                   <div
@@ -321,7 +450,7 @@ export default function CreateQuiz() {
                     <div className=" flex justify-between">
                       <div className="flex gap-2">
                         <div className="border cursor-grab p-2 rounded flex items-center">
-                          <i className="fa-solid fa-align-justify"></i>
+                          <HugeiconsIcon icon={Drag04Icon} size={20} />
                         </div>
                         <div className="border p-2 rounded flex items-center gap-2">
                           <i className="fa-regular fa-circle-check"></i>
@@ -337,7 +466,7 @@ export default function CreateQuiz() {
                             }
                             className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:focus:ring-blue-500 dark:focus:border-blue-500"
                           >
-                            {[15, 30, 45, 60, 90].map((time) => (
+                            {TIME_OPTIONS.map((time) => (
                               <option key={time} value={time}>
                                 {time} giây
                               </option>
@@ -354,7 +483,7 @@ export default function CreateQuiz() {
                             }
                             className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                           >
-                            {[1, 2, 3, 4, 5].map((score) => (
+                            {SCORE_OPTIONS.map((score) => (
                               <option key={score} value={score}>
                                 {score} điểm
                               </option>
@@ -371,13 +500,9 @@ export default function CreateQuiz() {
                             }
                             className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
                           >
-                            {["ease", "medium", "hard"].map((difficulty) => (
-                              <option key={difficulty} value={difficulty}>
-                                {difficulty === "easy"
-                                  ? "Dễ"
-                                  : difficulty === "medium"
-                                  ? "Trung bình"
-                                  : "Khó"}
+                            {DIFFICULTY_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
                               </option>
                             ))}
                           </select>
@@ -388,10 +513,13 @@ export default function CreateQuiz() {
                           onClick={() => duplicateQuestion(question)}
                           className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
                         >
-                          <i className="fa-regular fa-copy"></i>
+                          <HugeiconsIcon icon={Copy01Icon} size={20} />
                         </div>
-                        <div className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2">
-                          <i className="fa-regular fa-pen-to-square"></i>
+                        <div
+                          onClick={() => handleEditClick(question)}
+                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
+                        >
+                          <HugeiconsIcon icon={NoteEditIcon} size={20} />
                           <p className="text-sm">Chỉnh sửa</p>
                         </div>
 
@@ -399,7 +527,7 @@ export default function CreateQuiz() {
                           onClick={() => deleteQuestion(question.questionId)}
                           className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
                         >
-                          <i className="fa-regular fa-trash-can"></i>
+                          <HugeiconsIcon icon={Delete01Icon} size={20} />
                         </div>
                       </div>
                     </div>
@@ -407,12 +535,20 @@ export default function CreateQuiz() {
                       <p>{question.questionText}</p>
                       <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
                       <div className="grid grid-cols-2 grid-rows-2 gap-2">
-                        {question.answers.map((answer, key) => (
-                          <div key={key} className="flex items-center gap-2">
+                        {question.answers.map((answer, index) => (
+                          <div key={index} className="flex items-center gap-2">
                             {answer.isCorrect ? (
-                              <i className="text-emerald fa-solid fa-check"></i>
+                              <HugeiconsIcon
+                                icon={Tick01Icon}
+                                size={24}
+                                color="green"
+                              />
                             ) : (
-                              <i className="text-red-wine fa-solid fa-xmark"></i>
+                              <HugeiconsIcon
+                                icon={Cancel01Icon}
+                                size={20}
+                                color="red"
+                              />
                             )}
                             <p>{answer.text}</p>
                           </div>
@@ -423,16 +559,25 @@ export default function CreateQuiz() {
                 ))}
 
                 {/* New Question */}
-                <div className="flex justify-center mt-5">
+                <div className="flex justify-center mt-5 mb-10">
                   <div
                     onClick={handleClickModal}
-                    className="flex hover:bg-gray-50 cursor-pointer bg-white border-orange-semibold border-1 items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+                    className="flex cursor-pointer bg-darkblue btn-hover text-background items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
                   >
-                    <i className="text-sm fa-solid fa-plus"></i>
-                    <p className="text-sm">New question</p>
+                    <i className="fa-solid fa-plus"></i>
+                    <p>Câu hỏi mới</p>
                   </div>
                 </div>
               </div>
+              <EditQuestionModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                question={currentQuestion}
+                onSave={handleUpdateQuestion}
+                TIME_OPTIONS={TIME_OPTIONS}
+                SCORE_OPTIONS={SCORE_OPTIONS}
+                DIFFICULTY_OPTIONS={DIFFICULTY_OPTIONS}
+              />
             </div>
           </div>
         </main>
@@ -461,37 +606,37 @@ export default function CreateQuiz() {
                     onClick={showFormQuestion}
                     className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded"
                   >
-                    <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
-                      <i className="text-xl  fa-regular fa-circle-check"></i>
+                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
+                      <HugeiconsIcon icon={CursorMagicSelection03Icon} />
                     </div>
                     <p className="font-semibold">Nhiều lựa chọn</p>
                   </div>
                   <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
-                      <i className="fa-regular fa-square"></i>
+                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
+                      <HugeiconsIcon icon={ArtboardToolIcon} />
                     </div>
                     <p className="font-semibold">Điền vào chỗ trống</p>
                   </div>
                   <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
-                      <i className="fa-solid fa-bars-staggered"></i>
+                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
+                      <HugeiconsIcon icon={TextAlignJustifyCenterIcon} />
                     </div>
                     <p className="font-semibold">Đoạn văn</p>
                   </div>
                   <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
-                      <i className="fa-regular fa-hand"></i>
+                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
+                      <HugeiconsIcon icon={Drag04Icon} />
                     </div>
                     <p className="font-semibold">Kéo và thả</p>
                   </div>
                   <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-orange-soft rounded h-8 w-8 flex items-center justify-center">
-                      <i className="fa-regular fa-square-caret-down"></i>
+                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
+                      <HugeiconsIcon icon={ArrowDown01Icon} />
                     </div>
                     <p className="font-semibold">Thả xuống</p>
                   </div>
                 </div>
-                <div className="bg-nude-light">
+                <div className="bg-darkblue text-background">
                   <div className="p-8">
                     <p className="font-semibold mb-2">Thả xuống</p>
                     <p className="text-sm">

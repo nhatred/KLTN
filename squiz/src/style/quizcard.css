@@ -1,0 +1,9 @@
+.quizcard_component {
+  border-radius: 16px;
+  background-color: #f5f3ee;
+  background-image: linear-gradient(218deg, #ffdfe01a 48%, #efd9e399);
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+  overflow: visible;
+}

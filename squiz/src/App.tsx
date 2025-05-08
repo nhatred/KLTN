@@ -1,10 +1,15 @@
 import "./App.css";
-import { BrowserRouter, Routes, Route } from "react-router";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Activity from "./pages/Activity";
 import MainLayout from "./layout/MainLayout";
 import CreateQuiz from "./pages/CreateQuiz";
+import MyQuiz from "./pages/MyQuiz";
+import CreatedByMe from "./components/CreatedByMe";
+import HostedQuizzes from "./components/HostedQuizzes";
+import LikedQuizzes from "./components/LikedQuizzes";
+import EditQuiz from "./pages/EditQuiz";
 function App() {
   return (
     <>
@@ -14,8 +19,15 @@ function App() {
           <Route path="/dashboard" element={<MainLayout />}>
             <Route path="home" element={<Dashboard />} />
             <Route path="activity" element={<Activity />} />
+            <Route path="my-quiz" element={<MyQuiz />}>
+              <Route index element={<Navigate to="created-by-me" replace />} />
+              <Route path="created-by-me" element={<CreatedByMe />} />
+              <Route path="hosted-quizzes" element={<HostedQuizzes />} />
+              <Route path="liked-quizzes" element={<LikedQuizzes />} />
+            </Route>
           </Route>
           <Route path="/create-quiz" element={<CreateQuiz />} />
+          <Route path="/edit-quiz/:id" element={<EditQuiz />} />
         </Routes>
       </BrowserRouter>
     </>

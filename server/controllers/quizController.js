@@ -1,7 +1,8 @@
+import Question from "../models/Question.js";
 import Quiz from "../models/Quiz.js";
 import { v2 as cloudinary } from "cloudinary";
 
-export async function createQuiz(req, res) {
+async function createQuiz(req, res) {
   try {
     const userId = req.auth.userId;
     const quizData = req.body;
@@ -40,57 +41,183 @@ export async function createQuiz(req, res) {
   }
 }
 
-// export default { createQuiz };
-// // Create a new quiz
-// const createQuiz = async (req, res) => {
-//   try {
-//     const {
-//       name,
-//       topic,
-//       difficulty,
-//       isPublic,
-//       timePerQuestion,
-//       scorePerQuestion,
-//       creator,
-//     } = req.body;
+async function getAllQuiz(req, res) {
+  try {
+    const quizzes = await Quiz.find();
+    const quizzesWithQuestions = await Promise.all(
+      quizzes.map(async (quiz) => {
+        const questions = await Question.find({ quizId: quiz._id });
+        return {
+          ...quiz.toObject(),
+          questions,
+        };
+      })
+    );
+    res.json(quizzesWithQuestions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
 
-//     const newQuiz = new Quiz({
-//       name,
-//       topic,
-//       difficulty,
-//       isPublic: isPublic !== undefined ? isPublic : true,
-//       timePerQuestion,
-//       scorePerQuestion,
-//       creator,
-//       questions: [],
-//     });
+// Trong controllers/quizController.js
+async function updateQuizQuestions(req, res) {
+  try {
+    const { quizId } = req.params;
+    const { questionIds } = req.body;
 
-//     const savedQuiz = await newQuiz.save();
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
 
-//     res.status(201).json(savedQuiz);
-//   } catch (error) {
-//     console.error("Error creating quiz:", error);
-//     res
-//       .status(500)
-//       .json({ message: "Failed to create quiz", error: error.message });
-//   }
-// };
+    // Cập nhật danh sách câu hỏi
+    quiz.questions = questionIds;
+    await quiz.save();
 
-// // Get quiz by ID
-// const getQuizById = async (req, res) => {
-//   try {
-//     const quiz = await Quiz.findById(req.params.id).populate("questions");
-//     if (!quiz) {
-//       return res.status(404).json({ message: "Quiz not found" });
-//     }
-//     res.status(200).json(quiz);
-//   } catch (error) {
-//     console.error("Error fetching quiz:", error);
-//     res
-//       .status(500)
-//       .json({ message: "Failed to fetch quiz", error: error.message });
-//   }
-// };
+    res.json({
+      success: true,
+      message: "Quiz updated with questions",
+      quiz,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update quiz",
+      error: error.message,
+    });
+  }
+}
+
+async function getUserQuizzes(req, res) {
+  try {
+    const { userId } = req.params;
+
+    const quizzes = await Quiz.find({ creator: userId });
+
+    // Tùy chọn: Thêm câu hỏi cho mỗi quiz
+    const quizzesWithQuestions = await Promise.all(
+      quizzes.map(async (quiz) => {
+        const questions = await Question.find({ quizId: quiz._id });
+        return {
+          ...quiz.toObject(),
+          questions,
+        };
+      })
+    );
+
+    res.json(quizzesWithQuestions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// Get quiz by ID
+const getQuizById = async (req, res) => {
+  try {
+    const quiz = await Quiz.findById(req.params.id)
+      .populate("questions")
+      .lean();
+
+    if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+    res.json({
+      success: true,
+      data: quiz,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// New function to update quiz
+async function updateQuiz(req, res) {
+  try {
+    console.log("Updating quiz:", req.params.id);
+    console.log("Update data:", req.body);
+
+    // Check authentication
+    if (!req.auth || !req.auth.userId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User not authenticated" });
+    }
+
+    const userId = req.auth.userId;
+    const quizId = req.params.id;
+    const updateData = req.body;
+    const imageFile = req.file;
+
+    // Find the quiz
+    const quiz = await Quiz.findById(quizId);
+
+    if (!quiz) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Quiz not found" });
+    }
+
+    // Check if user is the creator
+    if (quiz.creator.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to update this quiz",
+      });
+    }
+
+    // Handle image update if a new image is provided
+    if (imageFile) {
+      try {
+        console.log("Uploading new image to Cloudinary");
+
+        // Upload new image
+        const uploadResult = await cloudinary.uploader.upload(imageFile.path, {
+          resource_type: "image",
+          folder: "quiz_images",
+          transformation: [{ width: 1000, crop: "limit" }],
+        });
+
+        // Update the image URL
+        quiz.imageUrl = uploadResult.secure_url;
+        console.log(
+          "New image uploaded successfully:",
+          uploadResult.secure_url
+        );
+      } catch (cloudinaryError) {
+        console.error("Failed to upload new image:", cloudinaryError);
+        return res.status(500).json({
+          success: false,
+          message: "Error uploading new image: " + cloudinaryError.message,
+        });
+      }
+    }
+
+    // Save the updated quiz
+    await quiz.save();
+    console.log("Quiz updated successfully");
+
+    res.status(200).json({
+      success: true,
+      message: "Quiz updated successfully",
+      quiz: quiz,
+    });
+  } catch (error) {
+    console.error("Quiz update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update quiz",
+      error: error.message,
+    });
+  }
+}
+
+export {
+  createQuiz,
+  getQuizById,
+  getAllQuiz,
+  updateQuizQuestions,
+  getUserQuizzes,
+  updateQuiz,
+};
 
 // // Add question to quiz
 // const addQuestionToQuiz = async (req, res) => {

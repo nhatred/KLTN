@@ -1,11 +1,57 @@
 import { NavLink } from "react-router";
 import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Home01Icon,
+  Clock04Icon,
+  Cards02Icon,
+  SearchSquareIcon,
+  SearchAreaIcon,
+  Add01Icon,
+} from "@hugeicons/core-free-icons";
+import { useEffect, useState } from "react";
 
 export default function Navbar() {
   const { openSignIn } = useClerk();
   const { user } = useUser();
+
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const [showShadow, setShowShadow] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      // Ẩn nav khi cuộn xuống
+      if (currentScrollY > lastScrollY && currentScrollY > 10) {
+        setVisible(false);
+        setShowShadow(false);
+      }
+      // Hiện nav + bóng khi cuộn lên (trừ khi ở đầu trang)
+      else if (currentScrollY < lastScrollY && currentScrollY > 10) {
+        setVisible(true);
+        setShowShadow(true);
+      }
+      // Ở đầu trang: hiện nav nhưng không bóng
+      else if (currentScrollY <= 10) {
+        setVisible(true);
+        setShowShadow(false);
+      }
+
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
+
   return (
-    <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
+    <nav
+      className={`h-16 fixed z-50 bg-background left-0 right-0 py-2 px-8 flex justify-between items-center transition-all duration-300 ${
+        visible ? "translate-y-0" : "-translate-y-full"
+      } ${showShadow ? "shadow-md" : "shadow-none"}`}
+    >
       <div className="flex items-center gap-5">
         <NavLink to="/">
           <h1 className="text-3xl font-black">Squizz</h1>
@@ -17,61 +63,61 @@ export default function Navbar() {
           >
             Search
           </label>
-          <div className="relative">
-            <div className="flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
-              <svg
-                className="w-5 h-5 text-gray-500 dark:text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                ></path>
-              </svg>
+          <div className=" flex border-orange rounded-lg border-1">
+            <div className="flex inset-y-0 items-center pl-2 pointer-events-none">
+              <HugeiconsIcon icon={SearchAreaIcon} />
             </div>
             <input
               type="search"
               id="default-search"
-              className="block p-4 pl-10 w-full text-sm rounded-lg border border-gray-300 focus:ring-blue-deep focus:border-blue-deep  "
-              placeholder="Tìm Quizz..."
+              className="block p-2 w-full text-sm "
+              placeholder="Tìm Squiz..."
               required
             />
             <button
               type="submit"
-              className=" absolute right-2.5 bottom-2.5 bg-orange-soft hover:bg-orange-semibold focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 "
+              className="bg-orange font-medium rounded-e-lg p-2"
             >
-              Tìm kiếm
+              <HugeiconsIcon icon={SearchSquareIcon} size={26} />
             </button>
           </div>
         </form>
         <NavLink
           to="/dashboard/home"
           className={({ isActive }) =>
-            `flex h-16 items-center gap-2 p-3 font-semibold text-lg ${
-              isActive ? "text-orange-800 border-b-4 border-orange-800" : ""
+            `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+              isActive ? "btn-active text-orange" : ""
             }`
           }
         >
-          <i className="text-xl fa-solid fa-house-fire"></i>
-          <p>Dashboard</p>
+          <HugeiconsIcon icon={Home01Icon} />
+          <p>Trang chủ</p>
         </NavLink>
 
         {user && (
           <NavLink
             to="/dashboard/activity"
             className={({ isActive }) =>
-              `flex h-16 items-center gap-2 p-3 font-semibold text-lg ${
-                isActive ? "text-orange-800 border-b-4 border-orange-800" : ""
+              `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                isActive ? "btn-active text-orange" : ""
               }`
             }
           >
-            <i className="text-xl fa-regular fa-clock"></i>
-            <p>Activity</p>
+            <HugeiconsIcon icon={Clock04Icon} />
+            <p>Hoạt động</p>
+          </NavLink>
+        )}
+        {user && (
+          <NavLink
+            to="/dashboard/my-quiz/"
+            className={({ isActive }) =>
+              `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                isActive ? "btn-active text-orange" : ""
+              }`
+            }
+          >
+            <HugeiconsIcon icon={Cards02Icon} />
+            <p>Quiz của bạn</p>
           </NavLink>
         )}
       </div>
@@ -79,18 +125,18 @@ export default function Navbar() {
         {user && (
           <NavLink
             to="/create-quiz"
-            className="flex bg-white items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+            className="flex bg-orange btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
           >
-            <i className="fa-solid fa-plus"></i>
-            <p>Create Quiz</p>
+            <HugeiconsIcon icon={Add01Icon} size={20} />
+            <p>Tạo một Squiz</p>
           </NavLink>
         )}
         {user ? (
           <UserButton />
         ) : (
           <div onClick={() => openSignIn()}>
-            <div className="p-3 cursor-pointer bg-nude-semibold btn-hover rounded font-semibold text-lg">
-              <p>Login</p>
+            <div className="p-3 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+              <p>Đăng nhập</p>
             </div>
           </div>
         )}

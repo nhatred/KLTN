@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,16 +7,16 @@
 :root {
   line-height: 1.5;
   font-weight: 400;
-  font-family: "Open Sans", sans-serif;
+  font-family: "Noto Sans", sans-serif;
   font-size: 15px;
-  color: #4e342e;
-  background-color: #fff3e0;
+  color: #153a43;
+  background-color: #fcfbfa;
   height: 100lvh;
 }
 h1,
 h2,
 h3 {
-  font-family: "Montserrat", sans-serif;
+  font-family: "Noto Sans", sans-serif;
   font-weight: bold;
 }
 
@@ -25,7 +26,8 @@ p {
 
 input {
   outline: none;
-  background-color: white;
+  background-color: #fcfbfa;
+  color: #153a43;
 }
 .btn-hover,
 button {
@@ -34,8 +36,15 @@ button {
 .box-shadow-hover {
   transition: all 0.2s linear;
 }
+.btn-active {
+  box-shadow: rgba(240, 46, 170, 0.4) 0px 5px, rgba(240, 46, 170, 0.3) 0px 4px,
+    rgba(240, 46, 170, 0.2) 0px 6px, rgba(240, 46, 170, 0.1) 0px 8px,
+    rgba(240, 46, 170, 0.05) 0px 10px;
+}
 .btn-hover:hover {
-  background-color: #f0e6d2;
+  box-shadow: rgba(240, 46, 170, 0.4) 0px 5px, rgba(240, 46, 170, 0.3) 0px 4px,
+    rgba(240, 46, 170, 0.2) 0px 6px, rgba(240, 46, 170, 0.1) 0px 8px,
+    rgba(240, 46, 170, 0.05) 0px 10px;
 }
 
 .box-shadow {
@@ -129,4 +138,8 @@ button {
   display: block;
   height: 100%;
   width: 100%;
+}
+
+.message {
+  clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 75%, 63% 100%, 50% 75%, 0% 75%);
 }

@@ -1,0 +1,82 @@
+/* .stats_item {
+  border-radius: var(--radius--radius-16);
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
+  padding: 2rem;
+  display: flex;
+  background-color: #e3d6e5;
+  position: relative;
+  overflow: clip;
+}
+
+.stats_texture.is-darken-20 {
+  opacity: 0.2;
+  mix-blend-mode: darken;
+}
+.stats_texture {
+  opacity: 0.5;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  object-fit: cover;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  position: absolute;
+  inset: 0%;
+}
+ */
+
+.empower_card {
+  border-radius: 8px;
+  color: #153a43;
+  position: relative;
+  inset: auto;
+  overflow: clip;
+}
+
+.empower_card-background.is-pearl {
+  background-color: #fcfbfa !important;
+}
+
+.empower_card-content {
+  z-index: 2;
+  grid-column-gap: 2rem;
+  grid-row-gap: 2rem;
+  flex-flow: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  height: 100%;
+  padding: 6rem 2rem 2rem;
+  display: flex;
+  position: relative;
+}
+.empower_card-background {
+  z-index: 0;
+  background-color: #7ed4ea;
+  justify-content: flex-start;
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  position: absolute;
+  inset: 0%;
+}
+
+.empower_card-texture._2 {
+  opacity: 0.6;
+  mix-blend-mode: darken;
+}
+.empower_card-texture {
+  opacity: 0.9;
+  filter: brightness(120%);
+  pointer-events: none;
+  mix-blend-mode: darken;
+  object-fit: cover;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  position: relative;
+  inset: 0%;
+}

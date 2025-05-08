@@ -6,60 +6,60 @@ const createQuestion = async (req, res) => {
   try {
     const questionData = req.body.questions;
     const quizId = questionData[0].quizId;
-    console.log(questionData);
+
     // Validate if quiz exists
     const quiz = await Quiz.findById(quizId);
     if (!quiz) {
       return res.status(404).json({ message: "Quiz not found" });
     }
 
+    // Tạo tất cả câu hỏi và thu thập ID
+    const createdQuestions = [];
+    const questionIds = [];
+
     for (const question of questionData) {
-      await Question.create(question);
-      res.json({
-        success: true,
-        message: "Question Added Success!",
-      });
+      const newQuestion = await Question.create(question);
+      createdQuestions.push(newQuestion);
+      questionIds.push(newQuestion._id);
     }
 
-    // // Format options and correct answers based on question type
-    // let formattedOptions = [];
-    // let formattedCorrectAnswer = [];
+    // Cập nhật Quiz với các ID câu hỏi mới
+    quiz.questions = [...quiz.questions, ...questionIds];
+    await quiz.save();
 
-    // if (questionType === "multipleChoices") {
-    //   formattedOptions = options.map((option) => option.text);
-    //   formattedCorrectAnswer = options
-    //     .filter((option) => option.isCorrect)
-    //     .map((option) => option.text);
-    // }
-    // // Handle other question types here...
-
-    // // Create new question
-    // const newQuestion = new Question({
-    //   quizId,
-    //   questionText,
-    //   questionType,
-    //   options: formattedOptions,
-    //   correctAnswer: formattedCorrectAnswer,
-    // });
-
-    // const savedQuestion = await newQuestion.save();
-
-    // // Add question to quiz's questions array
-    // quiz.questions.push(savedQuestion._id);
-
-    // // Update quiz with time and score per question if provided
-    // if (timePerQuestion) quiz.timePerQuestion = timePerQuestion;
-    // if (scorePerQuestion) quiz.scorePerQuestion = scorePerQuestion;
-
-    // await quiz.save();
-
-    // res.status(201).json(savedQuestion);
+    res.json({
+      success: true,
+      message: "Questions Added Successfully!",
+      questions: createdQuestions,
+      questionIds: questionIds,
+    });
   } catch (error) {
     console.error("Error creating question:", error);
-    res
-      .status(500)
-      .json({ message: "Failed to create question", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create question",
+      error: error.message,
+    });
   }
 };
 
-export default { createQuestion };
+async function getQuestionByQuizId(req, res) {
+  try {
+    const { quizId } = req.params;
+
+    // Kiểm tra quiz tồn tại
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+
+    // Tìm tất cả câu hỏi có quizId tương ứng
+    const questions = await Question.find({ quizId: quizId });
+
+    res.json(questions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export default { createQuestion, getQuestionByQuizId };

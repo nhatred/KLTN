@@ -3,6 +3,7 @@ import questionController from "../controllers/questionController.js"; // Bỏ c
 
 const router = express.Router();
 
-router.post("/", questionController.createQuestion); // Bỏ comment
+router.post("/", questionController.createQuestion);
+router.get("/quiz/:quizId", questionController.getQuestionByQuizId);
 
 export default router;
