@@ -4,9 +4,9 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import MultipleChoices from "../components/MultipleChoices";
 import { useForm } from "react-hook-form";
-import { toast } from "react-hot-toast";
 import { Question } from "../types/Question";
 import { EditQuestionModal } from "../components/EditQuestionModal";
+import "../style/spinloader.css";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Backward01Icon,
@@ -22,6 +22,7 @@ import {
   Tick01Icon,
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
+import imageCompression from "browser-image-compression";
 
 const QUESTION_TYPES = {
   MULTIPLE_CHOICE: "multipleChoices",
@@ -58,8 +59,8 @@ export default function CreateQuiz() {
   const [isModalOpen, setIsModalOpen] = useState(false); //Modal Update Question
   const { getToken } = useAuth();
   const [isFormQuestion, setIsFormQuestion] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [quizData, setQuizData] = useState({
     creator: "",
     name: "",
@@ -71,6 +72,7 @@ export default function CreateQuiz() {
   });
   const [questions, setQuestions] = useState<Question[]>([]);
   const [imageData, setImageData] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [quizOptions, setQuizOptions] = useState({
     timePerQuestion: 30,
     scorePerQuestion: 1,
@@ -92,7 +94,7 @@ export default function CreateQuiz() {
     );
   }, [quizOptions]);
 
-  const handleEditClick = (question: any) => {
+  const handleEditClick = (question: Question) => {
     setCurrentQuestion(question);
     setIsModalOpen(true);
   };
@@ -116,20 +118,19 @@ export default function CreateQuiz() {
       quizId: "",
       questionType: questionTypeMapping[data.questionType] || data.questionType,
       questionText: data.questionText,
-      timePerQuestion: Number(data.timePerQuestion),
-      scorePerQuestion: Number(data.scorePerQuestion),
+      timePerQuestion: Number(data.timePerQuestion) || quizOptions.timePerQuestion,
+      scorePerQuestion: Number(data.scorePerQuestion) || quizOptions.scorePerQuestion,
       difficulty: data.difficulty,
       answers: data.answers,
     };
     setQuestions((prevVal) => [...prevVal, newQuestion]);
-    toast.success("Thêm câu hỏi thành công");
   };
 
   // UPDATE CAU HOI
-  const handleQuestionUpdate = (e: any, questionId: number | string) => {
+  const handleQuestionUpdate = (e: React.ChangeEvent<HTMLSelectElement>, questionId: number | string) => {
     const { name, value } = e.target;
 
-    setQuestions((prevQuestions) =>
+    setQuestions((prevQuestions: Question[]) =>
       prevQuestions.map((question) =>
         question.questionId === questionId
           ? {
@@ -142,19 +143,18 @@ export default function CreateQuiz() {
   };
 
   // SAO CHEP CAU HOI
-  const duplicateQuestion = (question: any) => {
+  const duplicateQuestion = (question: Question) => {
     const duplicatedQuestion = {
       ...question,
       questionId: Date.now(),
     };
 
-    setQuestions((prevQuestions) => [...prevQuestions, duplicatedQuestion]);
-    toast.success("Question duplicated");
+    setQuestions((prevQuestions: Question[]) => [...prevQuestions, duplicatedQuestion]);
   };
 
   // XOA CAU HOI
-  const deleteQuestion = (questionId: any) => {
-    setQuestions((prevQuestions) =>
+  const deleteQuestion = (questionId: number | string) => {
+    setQuestions((prevQuestions: Question[]) =>
       prevQuestions.filter((q) => q.questionId !== questionId)
     );
   };
@@ -168,15 +168,39 @@ export default function CreateQuiz() {
     });
   };
 
-  const handleImageUpload = (e: any) => {
-    if (e.target.files != null) {
-      setImageData(e.target.files[0]);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setIsUploading(true);
+      
+      try {
+        // Kiểm tra kích thước file
+        if (file.size > 3 * 1024 * 1024) { 
+          const options = {
+            maxSizeMB: 1, 
+            maxWidthOrHeight: 1920, 
+            useWebWorker: true, // Tăng hiệu suất
+          };
+
+          const compressedFile = await imageCompression(file, options);
+          console.log('Original file size:', file.size / 1024 / 1024, 'MB');
+          console.log('Compressed file size:', compressedFile.size / 1024 / 1024, 'MB');
+          setImageData(compressedFile);
+        } else {
+          // Nếu file nhỏ hơn 2MB, sử dụng trực tiếp
+          setImageData(file);
+        }
+      } catch (error) {
+        console.error('Error compressing image:', error);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
   const showFormQuestion = () => {
-    setIsFormQuestion((prevVal) => !prevVal);
-    setIsModal((prevVal) => !prevVal);
+    setIsFormQuestion((prevVal: boolean) => !prevVal);
+    setIsModal((prevVal: boolean) => !prevVal);
   };
 
   const totalScoreOfQuiz = () => {
@@ -195,6 +219,7 @@ export default function CreateQuiz() {
       return;
     }
     try {
+      setIsSaving(true);
       const token = await getToken();
       const formData = new FormData();
       formData.append("creator", "User1");
@@ -203,7 +228,6 @@ export default function CreateQuiz() {
       formData.append("difficulty", quizData.difficulty);
       formData.append("isPublic", quizData.isPublic);
       formData.append("imageUrl", imageData || "");
-      // formData.append("questions", JSON.stringify(quizData.questions || []));
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
       const response = await fetch(`${API_BASE_URL}/quiz`, {
@@ -223,10 +247,21 @@ export default function CreateQuiz() {
         ...question,
         quizId: quizResult._id,
       }));
-      await handleSaveQuestion(updatedQuestions);
+      const saveResult = await handleSaveQuestion(updatedQuestions);
+      
+      if (saveResult.success) {
+        // Add a small delay before navigation
+        setTimeout(() => {
+          navigate("/dashboard/home", { replace: true });
+        }, 500);
+      } else {
+        throw new Error(saveResult.message || "Failed to save questions");
+      }
     } catch (error) {
       console.error("Error saving quiz:", error);
       alert("Failed to save quiz. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -287,7 +322,7 @@ export default function CreateQuiz() {
           e.preventDefault();
         }}
       >
-        <nav className="h-16 fixed left-0 right-0 border-b-1 border-orange-600 bg-orange-soft py-2 px-4 flex justify-between items-center">
+        <nav className="h-16 fixed left-0 right-0 border-b-1 z-10 bg-background py-2 px-4 flex justify-between items-center">
           <div className="flex items-center gap-5">
             <div 
               onClick={() => navigate(-1)}
@@ -303,9 +338,18 @@ export default function CreateQuiz() {
             onClick={handleSubmit(handleSaveQuiz)}
             className="flex items-center gap-5"
           >
-            <div className="p-3 flex items-center gap-2 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
-              <i className="fa-solid fa-floppy-disk"></i>
-              <p>Lưu Squiz</p>
+            <div className="p-3 flex items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+              {isSaving ? (
+                <div className="flex items-center gap-2">
+                  <span className="loader"></span>
+                  <p className="pl-1">Đang tạo Squiz...</p>
+                </div>
+              ) : (
+                <>
+                  <i className="fa-solid fa-floppy-disk"></i>
+                  <p>Lưu Squiz</p>
+                </>
+              )}
             </div>
           </button>
         </nav>
@@ -386,18 +430,21 @@ export default function CreateQuiz() {
                   type="file"
                   onChange={handleImageUpload}
                   id="image-upload"
+                  disabled={isUploading}
                 />
 
                 <label
                   htmlFor="image-upload"
-                  className="cursor-pointer flex items-center gap-1 mt-5 mb-2"
+                  className={`cursor-pointer flex items-center gap-1 mt-5 mb-2 ${isUploading ? 'opacity-50' : ''}`}
                 >
                   <HugeiconsIcon
                     size={30}
                     icon={ImageUploadIcon}
                     className="text-2xl text-gray-500 hover:text-orange transition-colors"
                   />{" "}
-                  <p className="text-md font-semibold">Tải ảnh nền cho Squiz</p>
+                  <p className="text-md font-semibold">
+                    {isUploading ? 'Đang tải ảnh lên...' : 'Tải ảnh nền cho Squiz'}
+                  </p>
                 </label>
               </div>
               {errors.imageUrl && (
@@ -405,16 +452,18 @@ export default function CreateQuiz() {
                   Vui lòng chọn ảnh nền cho squiz
                 </p>
               )}
-              {imageData && (
+              {isUploading && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="loader"></span>
+                  <p className="text-sm text-gray-600">Đang xử lý ảnh...</p>
+                </div>
+              )}
+              {imageData && !isUploading && (
                 <div className="flex">
                   <img
-                    src={
-                      imageData
-                        ? URL.createObjectURL(imageData)
-                        : "/assets/notfound.jpg"
-                    }
+                    src={URL.createObjectURL(imageData)}
                     alt="image data"
-                    className=" rounded-lg w-80"
+                    className="rounded-lg w-80"
                   />
                 </div>
               )}
@@ -444,10 +493,10 @@ export default function CreateQuiz() {
               <div>
                 {questions.map((question) => (
                   <div
-                    key={question.questionId}
+                    key={`questionid-${question.questionId}`}
                     className="w-full px-8 py-5 mt-5 bg-white rounded-lg col-span-5 box-shadow"
                   >
-                    <div className=" flex justify-between">
+                    <div className="flex justify-between">
                       <div className="flex gap-2">
                         <div className="border cursor-grab p-2 rounded flex items-center">
                           <HugeiconsIcon icon={Drag04Icon} size={20} />
@@ -459,15 +508,15 @@ export default function CreateQuiz() {
                         <div>
                           <select
                             name="timePerQuestion"
-                            id="time"
+                            id={`time-${question.questionId}`}
                             value={question.timePerQuestion}
                             onChange={(e) =>
                               handleQuestionUpdate(e, question.questionId)
                             }
-                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                           >
                             {TIME_OPTIONS.map((time) => (
-                              <option key={time} value={time}>
+                              <option key={`time-${time}-${question.questionId}`} value={time}>
                                 {time} giây
                               </option>
                             ))}
@@ -476,15 +525,15 @@ export default function CreateQuiz() {
                         <div>
                           <select
                             name="scorePerQuestion"
-                            id="score"
+                            id={`score-${question.questionId}`}
                             value={question.scorePerQuestion}
                             onChange={(e) =>
                               handleQuestionUpdate(e, question.questionId)
                             }
-                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold"
                           >
                             {SCORE_OPTIONS.map((score) => (
-                              <option key={score} value={score}>
+                              <option key={`score-${score}-${question.questionId}`} value={score}>
                                 {score} điểm
                               </option>
                             ))}
@@ -493,15 +542,15 @@ export default function CreateQuiz() {
                         <div>
                           <select
                             name="difficulty"
-                            id="difficulty"
+                            id={`difficulty-${question.questionId}`}
                             value={question.difficulty}
                             onChange={(e) =>
                               handleQuestionUpdate(e, question.questionId)
                             }
-                            className="bg-white  border outline-none border-gray-300  text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold"
                           >
                             {DIFFICULTY_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
+                              <option key={`difficulty-${option.value}-${question.questionId}`} value={option.value}>
                                 {option.label}
                               </option>
                             ))}
@@ -522,7 +571,6 @@ export default function CreateQuiz() {
                           <HugeiconsIcon icon={NoteEditIcon} size={20} />
                           <p className="text-sm">Chỉnh sửa</p>
                         </div>
-
                         <div
                           onClick={() => deleteQuestion(question.questionId)}
                           className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
@@ -536,7 +584,7 @@ export default function CreateQuiz() {
                       <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
                       <div className="grid grid-cols-2 grid-rows-2 gap-2">
                         {question.answers.map((answer, index) => (
-                          <div key={index} className="flex items-center gap-2">
+                          <div key={`${question.questionId}-answer-${index}`} className="flex items-center gap-2">
                             {answer.isCorrect ? (
                               <HugeiconsIcon
                                 icon={Tick01Icon}
@@ -595,7 +643,7 @@ export default function CreateQuiz() {
               <div className="flex my-1 justify-end">
                 <div
                   onClick={handleClickModal}
-                  className=" w-5 h-5 my-1 flex justify-center items-center rounded hover:bg-gray-100 cursor-pointer"
+                  className="w-5 h-5 my-1 flex justify-center items-center rounded hover:bg-gray-100 cursor-pointer"
                 >
                   <i className="text-sm fa-solid fa-xmark"></i>
                 </div>

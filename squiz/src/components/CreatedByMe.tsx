@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Quiz } from "../types/Quiz";
-import { useOutletContext } from "react-router";
+import { NavLink, useOutletContext, useParams } from "react-router";
 import { useUser } from "@clerk/clerk-react";
 import QuizzCard from "./QuizzCard";
 import Loading from "./Loading";
+import EditQuiz from "../pages/EditQuiz";
 
 export default function CreatedByMe() {
   const { user } = useUser();
@@ -73,8 +74,11 @@ export default function CreatedByMe() {
         <Loading />
       ) : (
         <div className=" grid grid-cols-3 gap-5">
-          {filteredQuizzes.map((quiz: Quiz) => (
-            <QuizzCard quiz={quiz} />
+            {filteredQuizzes.map((quiz: Quiz) => (
+            <NavLink to={"/edit-quiz/" + quiz._id}>
+                <QuizzCard key={quiz._id} quiz={quiz} handleCardClick={() => {}}/>
+            </NavLink>
+            
           ))}
         </div>
       )}

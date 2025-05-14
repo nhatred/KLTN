@@ -7,6 +7,7 @@ import {
   getUserQuizzes,
   updateQuiz,
   updateQuizQuestions,
+  deleteQuiz,
 } from "../controllers/quizController.js";
 import { protectCreator } from "../middlewares/authMiddleware.js";
 
@@ -32,5 +33,7 @@ router.put(
   protectCreator,
   updateQuiz
 );
+
+router.delete("/:id", protectCreator, deleteQuiz);
 
 export default router;

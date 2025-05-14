@@ -13,7 +13,10 @@ const createQuestion = async (req, res) => {
       return res.status(404).json({ message: "Quiz not found" });
     }
 
-    // Tạo tất cả câu hỏi và thu thập ID
+    // Delete all existing questions for this quiz
+    await Question.deleteMany({ quizId: quizId });
+
+    // Create new questions
     const createdQuestions = [];
     const questionIds = [];
 
@@ -23,13 +26,13 @@ const createQuestion = async (req, res) => {
       questionIds.push(newQuestion._id);
     }
 
-    // Cập nhật Quiz với các ID câu hỏi mới
-    quiz.questions = [...quiz.questions, ...questionIds];
+    // Update Quiz with new question IDs (replace instead of append)
+    quiz.questions = questionIds;
     await quiz.save();
 
     res.json({
       success: true,
-      message: "Questions Added Successfully!",
+      message: "Questions Updated Successfully!",
       questions: createdQuestions,
       questionIds: questionIds,
     });
@@ -62,4 +65,35 @@ async function getQuestionByQuizId(req, res) {
   }
 }
 
-export default { createQuestion, getQuestionByQuizId };
+async function deleteQuestionsByQuizId(req, res) {
+  try {
+    const { quizId } = req.params;
+
+    // Kiểm tra quiz tồn tại
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+
+    // Xóa tất cả câu hỏi của quiz
+    await Question.deleteMany({ quizId: quizId });
+
+    // Xóa danh sách câu hỏi trong quiz
+    quiz.questions = [];
+    await quiz.save();
+
+    res.json({
+      success: true,
+      message: "Questions deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting questions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete questions",
+      error: error.message,
+    });
+  }
+}
+
+export default { createQuestion, getQuestionByQuizId, deleteQuestionsByQuizId };

@@ -19,13 +19,14 @@ const questionSchema = new mongoose.Schema(
       ],
       required: true,
     },
-    timePerQuestion: { type: Number }, // in seconds
+    timePerQuestion: { type: Number },
     scorePerQuestion: { type: Number },
     difficulty: {
       type: String,
       enum: ["easy", "medium", "hard"],
     },
-    // For multiple choice and dropdown
+
+    // Nhieu lua chon hoac kieu tha xuong
     options: [
       {
         type: String,
@@ -37,14 +38,15 @@ const questionSchema = new mongoose.Schema(
         },
       },
     ],
-    // For drag and drop
+
+    // Keo tha
     dragDropPairs: [
       {
         draggable: { type: String },
         dropZone: { type: String },
       },
     ],
-    // Store correct answer based on question type
+    // Luu tru cac dap an voi kieu cau hoi
     answers: [
       {
         text: { type: String, required: true },

@@ -9,6 +9,7 @@ import CreatedByMe from "../components/CreatedByMe";
 import HostedQuizzes from "../components/HostedQuizzes";
 import LikedQuizzes from "../components/LikedQuizzes";
 import EditQuiz from "./EditQuiz";
+import JoinQuiz from "./JoinQuiz";
 
 const router = createBrowserRouter([
   {
@@ -50,6 +51,10 @@ const router = createBrowserRouter([
   {
     path: "/edit-quiz/:id",
     Component: EditQuiz,
+  },
+  {
+    path: "/join-quiz/:id",
+    Component: JoinQuiz,
   },
 ]);
 

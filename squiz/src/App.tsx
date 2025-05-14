@@ -10,6 +10,7 @@ import CreatedByMe from "./components/CreatedByMe";
 import HostedQuizzes from "./components/HostedQuizzes";
 import LikedQuizzes from "./components/LikedQuizzes";
 import EditQuiz from "./pages/EditQuiz";
+import JoinQuiz from "./pages/JoinQuiz";
 function App() {
   return (
     <>
@@ -28,6 +29,7 @@ function App() {
           </Route>
           <Route path="/create-quiz" element={<CreateQuiz />} />
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
+          <Route path="/join-quiz/:id" element={<JoinQuiz />} />
         </Routes>
       </BrowserRouter>
     </>

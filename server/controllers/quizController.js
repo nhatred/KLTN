@@ -147,6 +147,15 @@ async function updateQuiz(req, res) {
     const updateData = req.body;
     const imageFile = req.file;
 
+    // Validate required fields
+    if (!updateData.name || !updateData.topic || !updateData.difficulty) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Missing required fields: name, topic, and difficulty are required",
+      });
+    }
+
     // Find the quiz
     const quiz = await Quiz.findById(quizId);
 
@@ -164,48 +173,109 @@ async function updateQuiz(req, res) {
       });
     }
 
-    // Handle image update if a new image is provided
-    if (imageFile) {
-      try {
-        console.log("Uploading new image to Cloudinary");
+    try {
+      // Update basic quiz information
+      quiz.name = updateData.name;
+      quiz.topic = updateData.topic;
+      quiz.difficulty = updateData.difficulty;
+      quiz.isPublic = updateData.isPublic || quiz.isPublic;
+      quiz.timePerQuestion =
+        Number(updateData.timePerQuestion) || quiz.timePerQuestion;
+      quiz.scorePerQuestion =
+        Number(updateData.scorePerQuestion) || quiz.scorePerQuestion;
 
-        // Upload new image
-        const uploadResult = await cloudinary.uploader.upload(imageFile.path, {
-          resource_type: "image",
-          folder: "quiz_images",
-          transformation: [{ width: 1000, crop: "limit" }],
-        });
+      // Handle image update if a new image is provided
+      if (imageFile) {
+        try {
+          console.log("Uploading new image to Cloudinary");
 
-        // Update the image URL
-        quiz.imageUrl = uploadResult.secure_url;
-        console.log(
-          "New image uploaded successfully:",
-          uploadResult.secure_url
-        );
-      } catch (cloudinaryError) {
-        console.error("Failed to upload new image:", cloudinaryError);
-        return res.status(500).json({
-          success: false,
-          message: "Error uploading new image: " + cloudinaryError.message,
-        });
+          // Upload new image
+          const uploadResult = await cloudinary.uploader.upload(
+            imageFile.path,
+            {
+              resource_type: "image",
+              folder: "quiz_images",
+              transformation: [{ width: 1000, crop: "limit" }],
+            }
+          );
+
+          // Update the image URL
+          quiz.imageUrl = uploadResult.secure_url;
+          console.log(
+            "New image uploaded successfully:",
+            uploadResult.secure_url
+          );
+        } catch (cloudinaryError) {
+          console.error("Failed to upload new image:", cloudinaryError);
+          return res.status(500).json({
+            success: false,
+            message: "Error uploading new image: " + cloudinaryError.message,
+          });
+        }
       }
+
+      // Save the updated quiz
+      await quiz.save();
+      console.log("Quiz updated successfully");
+
+      res.status(200).json({
+        success: true,
+        message: "Quiz updated successfully",
+        quiz: quiz,
+      });
+    } catch (saveError) {
+      console.error("Error saving quiz:", saveError);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save quiz updates: " + saveError.message,
+      });
     }
-
-    // Save the updated quiz
-    await quiz.save();
-    console.log("Quiz updated successfully");
-
-    res.status(200).json({
-      success: true,
-      message: "Quiz updated successfully",
-      quiz: quiz,
-    });
   } catch (error) {
     console.error("Quiz update error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update quiz",
-      error: error.message,
+      message: "Failed to update quiz: " + error.message,
+    });
+  }
+}
+
+async function deleteQuiz(req, res) {
+  try {
+    const userId = req.auth.userId;
+    const quizId = req.params.id;
+
+    // Find the quiz
+    const quiz = await Quiz.findById(quizId);
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        message: "Quiz not found",
+      });
+    }
+
+    // Check if user is the creator
+    if (quiz.creator.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to delete this quiz",
+      });
+    }
+
+    // Delete all questions associated with this quiz
+    await Question.deleteMany({ quizId: quizId });
+
+    // Delete the quiz
+    await Quiz.findByIdAndDelete(quizId);
+
+    res.json({
+      success: true,
+      message: "Quiz and associated questions deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting quiz:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete quiz: " + error.message,
     });
   }
 }
@@ -217,6 +287,7 @@ export {
   updateQuizQuestions,
   getUserQuizzes,
   updateQuiz,
+  deleteQuiz,
 };
 
 // // Add question to quiz

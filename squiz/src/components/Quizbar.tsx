@@ -13,7 +13,7 @@ export default function Quizbar({ quizOptions, setQuizOptions }: any) {
   };
   return (
     <div className="col-span-3">
-      <div className=" mb-5 bg-white box-shadow rounded-lg">
+      <div className=" mb-5 bg-white box-shadow rounded-lg ">
         <div className="px-10 py-5">
           <p className="text-xl mb-5">Cập nhật toàn bộ câu hỏi</p>
           <div className="flex gap-2">

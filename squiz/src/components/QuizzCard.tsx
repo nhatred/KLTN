@@ -1,5 +1,5 @@
 // import { format } from "date-fns";
-import { NavLink } from "react-router";
+
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   PlayIcon,
@@ -8,15 +8,21 @@ import {
 } from "@hugeicons/core-free-icons";
 import "../style/quizcard.css";
 import "../style/dashboard.css";
+import { Quiz } from "../types/Quiz";
 
-export default function QuizzCard({ quiz }: any) {
+interface QuizzCardProps {
+  quiz: Quiz;
+  handleCardClick: () => void;
+}
+
+export default function QuizzCard({ quiz, handleCardClick }: QuizzCardProps) {
   return (
-    <NavLink
-      to={`/edit-quiz/${quiz._id}`}
+    <div
+      onClick={handleCardClick}
       className="bg-white box-shadow flex flex-col quizcard_component justify-between rounded overflow-hidden"
     >
       <div className="relative quizcard_component">
-        <img className="w-full rounded-t-2xl" src={quiz.imageUrl} alt="" />
+        <img className="w-screen rounded-t-2xl h-52 object-cover" src={quiz.imageUrl} alt="" />
         <div className="grain rounded-2xl"></div>
         <div className="noise rounded-2xl"></div>
       </div>
@@ -64,6 +70,6 @@ export default function QuizzCard({ quiz }: any) {
           <HugeiconsIcon icon={PlayIcon} color="background" />
         </div>
       </div>
-    </NavLink>
+    </div>
   );
 }
