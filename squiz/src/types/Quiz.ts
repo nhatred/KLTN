@@ -1,9 +1,10 @@
+import { Question } from "./Question";
 export interface Quiz {
   _id: string;
   imageUrl: string;
   name: string;
   difficulty: string;
-  questions: [];
+  questions: Question[];
   topic: string;
   createdAt: string;
   totalPlays: number;

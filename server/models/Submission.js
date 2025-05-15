@@ -9,7 +9,14 @@ const submissionSchema = new mongoose.Schema({
   quizRoom: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "QuizRoom",
-    required: true,
+  },
+  user: {
+    type: String,
+    ref: "User"
+  },
+  quiz: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Quiz"
   },
   question: {
     type: mongoose.Schema.Types.ObjectId,

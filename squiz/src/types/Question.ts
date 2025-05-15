@@ -1,4 +1,5 @@
 export interface Question {
+  _id?: string;
   questionId: number;
   quizId: string;
   questionType: string;
@@ -6,5 +7,10 @@ export interface Question {
   timePerQuestion: number;
   scorePerQuestion: number;
   difficulty: string;
-  answers: any[];
+  answers: answers[];
+}
+
+export interface answers {
+  text: string;
+  isCorrect: boolean;
 }

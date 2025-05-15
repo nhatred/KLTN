@@ -14,6 +14,12 @@ const userSchema = new mongoose.Schema(
         joinedAt: { type: Date, default: Date.now },
       },
     ],
+    participations: [
+      { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: "Participant" 
+      }
+    ],
   },
   { timestamps: true }
 );

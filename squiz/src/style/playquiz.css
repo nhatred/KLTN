@@ -1,0 +1,342 @@
+.answer-card {
+  position: relative;
+  height: 100%;
+  background: mediumturquoise;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: bold;
+  border-radius: 15px;
+  cursor: pointer;
+  color: #333;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(0);
+}
+
+.answer-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.answer-card::before,
+.answer-card::after {
+  position: absolute;
+  content: "";
+  width: 20%;
+  height: 20%;
+  background-color: lightblue;
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 0;
+}
+
+.answer-card::before {
+  top: 0;
+  right: 0;
+  border-radius: 0 15px 0 100%;
+}
+
+.answer-card::after {
+  bottom: 0;
+  left: 0;
+  border-radius: 0 100% 0 15px;
+}
+
+.answer-card:hover::before,
+.answer-card:hover::after {
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.answer-card:hover::after {
+  content: "";
+}
+
+.answer-card-content {
+  position: relative;
+  z-index: 2;
+  padding: 1rem;
+  transition: all 0.3s;
+}
+
+.answer-card.correct {
+  background: #2e7d32 !important;
+  color: white !important;
+  box-shadow: 0 0 30px rgba(76, 175, 80, 0.8) !important;
+  transform: scale(1.05);
+  animation: correctPulse 0.8s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes correctPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(76, 175, 80, 0.7); }
+  50% { transform: scale(1.08); box-shadow: 0 0 40px rgba(76, 175, 80, 0.9); }
+  100% { transform: scale(1.05); box-shadow: 0 0 30px rgba(76, 175, 80, 0.8); }
+}
+
+.answer-card.correct::before,
+.answer-card.correct::after {
+  background-color: #4caf50 !important;
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+}
+
+.answer-card.correct::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  background: linear-gradient(
+    135deg, 
+    transparent 0%, 
+    transparent 25%, 
+    rgba(255, 255, 255, 0.05) 25%, 
+    rgba(255, 255, 255, 0.05) 50%, 
+    transparent 50%, 
+    transparent 75%, 
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 20px 20px;
+  animation: confetti 2s linear infinite;
+  opacity: 0.3;
+  z-index: 0;
+}
+
+/* Confetti effect for correct answer */
+@keyframes confetti {
+  0% { background-position: 0 0; }
+  100% { background-position: 100% 100%; }
+}
+
+.answer-card.incorrect {
+  background: #c62828 !important;
+  color: white !important;
+  box-shadow: 0 0 30px rgba(244, 67, 54, 0.8) !important;
+  transform: scale(1.05);
+  animation: incorrectShake 0.5s ease-in-out, incorrectRipple 1s ease-out;
+}
+
+@keyframes incorrectShake {
+  0%, 100% { transform: scale(1.05) translateX(0); }
+  10%, 30%, 50% { transform: scale(1.05) translateX(-5px); }
+  20%, 40%, 60% { transform: scale(1.05) translateX(5px); }
+  70% { transform: scale(1.05) translateX(0); }
+}
+
+/* Additional shake effect for incorrect answer */
+@keyframes incorrectRipple {
+  0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.6); }
+  70% { box-shadow: 0 0 0 15px rgba(244, 67, 54, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+}
+
+.answer-card.incorrect::before,
+.answer-card.incorrect::after {
+  background-color: #f44336 !important;
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+}
+
+/* Đáp án không được chọn khi đã có kết quả - mờ đi */
+.answer-card.dimmed {
+  opacity: 0.5;
+  filter: grayscale(60%);
+  transform: scale(0.95);
+  transition: all 0.5s ease;
+}
+
+.answer-card[disabled] {
+  cursor: default;
+}
+
+/* Overlay effect for correct/incorrect icons */
+.answer-card.correct::before,
+.answer-card.incorrect::before {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 3rem;
+  z-index: 5;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-radius: 15px;
+  backdrop-filter: blur(1px);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.answer-card.correct::before {
+  content: "✓";
+}
+
+.answer-card.incorrect::before {
+  content: "✗";
+}
+
+/* Animation for icons */
+@keyframes fadeOutIcon {
+  0% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7) rotate(10deg);
+  }
+}
+
+.answer-card.icon-hidden::before {
+  content: "" !important;
+}
+
+.answer-card.icon-fading::before {
+  animation: fadeOutIcon 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+/* Enhance feedback message animation */
+@keyframes feedbackSlideIn {
+  0% { 
+    opacity: 0; 
+    transform: translateY(-20px);
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateY(0);
+  }
+}
+
+.feedback-message {
+  animation: feedbackSlideIn 0.5s forwards;
+  border-left: 5px solid;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Question transition animation */
+@keyframes questionFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.question-container {
+  animation: questionFadeIn 0.6s ease-out;
+}
+
+/* Progress animation */
+@keyframes progressGlow {
+  0% {
+    box-shadow: 0 0 5px rgba(255, 165, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(255, 165, 0, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 5px rgba(255, 165, 0, 0.5);
+  }
+}
+
+.progress-bar {
+  animation: progressGlow 2s infinite;
+  border-radius: 10px;
+}
+
+/* Countdown animation */
+.time-display {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* Improved time warning */
+.time-display.warning {
+  color: #ff9800;
+  transform: scale(1.05);
+  text-shadow: 0 0 10px rgba(255, 152, 0, 0.7);
+}
+
+.time-display.danger {
+  color: #f44336;
+  animation: timePulse 1s infinite;
+  text-shadow: 0 0 10px rgba(244, 67, 54, 0.7);
+}
+
+@keyframes timePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+/* Urgent progress bar animation */
+@keyframes urgentPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 0, 0.7); }
+  50% { box-shadow: 0 0 15px rgba(255, 0, 0, 1); }
+}
+
+.progress-bar.urgent {
+  animation: urgentPulse 0.6s infinite;
+}
+
+.progress-bar.urgent div {
+  animation: flashBg 0.6s infinite alternate;
+}
+
+@keyframes flashBg {
+  0% { opacity: 0.9; }
+  100% { opacity: 1; }
+}
+
+/* Music toggle button */
+.music-btn {
+  position: relative;
+  background: rgba(50, 50, 50, 0.7);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  border: none;
+  outline: none;
+}
+
+.music-btn:hover {
+  transform: scale(1.1);
+  background: rgba(70, 70, 70, 0.8);
+}
+
+.music-btn:active {
+  transform: scale(0.95);
+}
+
+.music-btn.playing {
+  animation: musicPulse 2s infinite;
+}
+
+@keyframes musicPulse {
+  0% { box-shadow: 0 0 0 0 rgba(100, 220, 255, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(100, 220, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(100, 220, 255, 0); }
+}

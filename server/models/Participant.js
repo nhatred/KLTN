@@ -4,12 +4,19 @@ const participantSchema = new mongoose.Schema({
   quizRoom: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "QuizRoom",
-    required: true,
   },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Optional - for logged in users
+  quiz: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Quiz"
+  },
+  user: { 
+    type: String, 
+    ref: "User" 
+  }, // For logged in users with Clerk
   temporaryUsername: { type: String }, // For non-logged in users
   isLoggedIn: { type: Boolean, default: false },
   score: { type: Number, default: 0 },
+  deviceId: { type: String }, // Device identifier for tracking sessions
   submissions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Submission" }],
   joinedAt: { type: Date, default: Date.now },
 });
