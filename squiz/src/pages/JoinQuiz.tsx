@@ -33,10 +33,10 @@ const getDeviceId = () => {
 // Lưu trữ phiên chơi vào localStorage và server
 const saveQuizSession = async (quizId: string, quizState: any, userAnswers: UserAnswer[], timeLeft: number, userId: string | null) => {
   const currentTimestamp = new Date().getTime();
+  const deviceId = getDeviceId();
   
   // Không lưu phiên chơi nếu đang ở màn hình kết quả
   if (quizState.showResults) {
-    console.log('Not saving session for results screen');
     return;
   }
   
@@ -56,15 +56,69 @@ const saveQuizSession = async (quizId: string, quizState: any, userAnswers: User
     console.error('Error saving quiz session to localStorage:', error);
   }
   
-  // Tạm thời bỏ qua việc lưu lên server do API đang gặp vấn đề
-  console.log('Temporarily skipping server session storage');
+  // Lưu lên server (nếu có kết nối)
+  try {
+    console.log(`Saving quiz session to server for quiz: ${quizId}`);
+    
+    const response = await fetch(`${API_BASE_URL}/quiz/session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        quizId,
+        quizState,
+        userAnswers,
+        timeLeft,
+        deviceId,
+        userId
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('Quiz session saved to server successfully:', data.sessionId);
+      } else {
+        console.warn('Server declined to save quiz session:', data.message);
+      }
+    } else {
+      console.warn(`Failed to save quiz session to server (status ${response.status})`);
+    }
+  } catch (error) {
+    console.error('Network error saving quiz session to server:', error);
+    // Tiếp tục vì đã lưu vào localStorage
+  }
 };
 
 // Lấy phiên chơi quiz từ server hoặc localStorage
 const getQuizSession = async (quizId: string, userId: string | null) => {
-  // Tạm thời, chỉ sử dụng localStorage vì server API đang gặp vấn đề
-  console.log('Temporarily using only localStorage for session storage');
+  const deviceId = getDeviceId();
   
+  // Thử lấy từ server trước
+  try {
+    console.log(`Attempting to fetch session from server for quiz: ${quizId}`);
+    const response = await fetch(`${API_BASE_URL}/quiz/session?quizId=${quizId}&deviceId=${deviceId}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('Quiz session restored from server successfully');
+        return data.data;
+      }
+    } else {
+      // Xử lý các lỗi khác nhau
+      if (response.status === 404) {
+        console.log('No active session found on server, checking localStorage');
+      } else {
+        console.warn(`Server returned error ${response.status}. Falling back to localStorage`);
+      }
+    }
+  } catch (error) {
+    console.warn('Network error fetching quiz session from server, falling back to localStorage');
+  }
+  
+  // Nếu không lấy được từ server, thử lấy từ localStorage
   try {
     console.log('Checking localStorage for quiz session');
     const sessionData = localStorage.getItem(`quiz_session_${quizId}`);
@@ -126,14 +180,10 @@ const clearQuizSession = async (quizId: string) => {
       } else {
         console.warn('Server could not mark quiz session as completed:', data.message);
       }
-    } else if (response.status === 404) {
-      // Endpoint not found - silently log but don't show as an error
-      console.log('Server endpoint for completing session not available (404). This is expected if server API is still in development.');
     } else {
       console.warn(`Failed to mark quiz session as completed (status ${response.status})`);
     }
   } catch (error) {
-    // Just log network errors but don't disturb the user experience
     console.error('Network error marking quiz session as completed:', error);
   }
 };
@@ -271,15 +321,6 @@ export default function JoinQuiz() {
           if (wasFromTimeout) {
             // Không cần làm gì thêm - đã được xử lý ở useEffect chính
           }
-          
-          // Save session immediately after changing question
-          if (id) {
-            const updatedQuizState = {
-              ...quizState,
-              currentQuestion: nextQuestion
-            };
-            saveQuizSession(id, updatedQuizState, userAnswers, timeLeft, isSignedIn ? user?.id : null);
-          }
         }, 100);
       }, 300);
     } else {
@@ -289,7 +330,7 @@ export default function JoinQuiz() {
         showResults: true
       }));
     }
-  }, [quizState, quizData.questions.length, loadQuestion, fromTimeout, id, userAnswers, timeLeft, isSignedIn, user?.id]);
+  }, [quizState.currentQuestion, quizData.questions.length, loadQuestion, fromTimeout]);
 
   // Khai bao showFeedback truoc khi su dung trong handleTimeout
   const showFeedback = useCallback((correct: boolean, message: string, isTimeout = false) => {
@@ -806,13 +847,10 @@ export default function JoinQuiz() {
   useEffect(() => {
     if (!id || !quizState.showQuiz || isLoading || quizState.showResults) return;
     
-    // Tạo debounced saveSession để tránh gọi quá nhiều lần
-    const saveTimer = setTimeout(() => {
-      saveQuizSession(id, quizState, userAnswers, timeLeft, isSignedIn ? user?.id : null);
-    }, 2000); // Chờ 2 giây trước khi lưu để tránh lưu quá nhiều
+    // Lưu trạng thái hiện tại
+    const currentTimestamp = new Date().getTime();
+    saveQuizSession(id, quizState, userAnswers, timeLeft, isSignedIn ? user?.id : null);
     
-    // Xóa timer khi component unmount hoặc dependencies thay đổi
-    return () => clearTimeout(saveTimer);
   }, [id, quizState, userAnswers, timeLeft, isLoading, isSignedIn, user?.id]);
 
   // Khôi phục phiên làm quiz khi tải trang

@@ -2,7 +2,7 @@ import "../style/loading.css";
 
 export default function Loading() {
   return (
-    <div className="loaderAnimation">
+    <div className="loaderAnimation ">
       <svg height="0" width="0" viewBox="0 0 64 64" className="absolute">
         <defs xmlns="http://www.w3.org/2000/svg">
           <linearGradient

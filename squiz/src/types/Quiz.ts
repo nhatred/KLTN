@@ -13,4 +13,5 @@ export interface Quiz {
   quizRating: [];
   scorePerQuestion: 1;
   timePerQuestion: 30;
+  favorites?: string[]; // Array of user IDs who favorited this quiz
 }

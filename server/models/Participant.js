@@ -7,11 +7,13 @@ const participantSchema = new mongoose.Schema({
   },
   quiz: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Quiz"
+    ref: "Quiz",
+    required: true
   },
   user: { 
     type: String, 
-    ref: "User" 
+    ref: "User",
+    required: true
   }, // For logged in users with Clerk
   temporaryUsername: { type: String }, // For non-logged in users
   isLoggedIn: { type: Boolean, default: false },
@@ -20,6 +22,11 @@ const participantSchema = new mongoose.Schema({
   submissions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Submission" }],
   joinedAt: { type: Date, default: Date.now },
 });
+
+// Add indexes for better query performance
+participantSchema.index({ user: 1, isLoggedIn: 1 });
+participantSchema.index({ quiz: 1 });
+participantSchema.index({ joinedAt: -1 });
 
 const Participant = mongoose.model("Participant", participantSchema);
 export default Participant;
