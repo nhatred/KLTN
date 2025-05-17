@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/clerk-react";
-import { Quiz } from "../types/Quiz";
+import { useAuth, useUser } from "@clerk/clerk-react";
+import { Quiz, QuizHistory } from "../types/Quiz";
 import QuizDetailModal from "../components/QuizDetailModal";
 import { format } from "date-fns";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -8,61 +8,67 @@ import { PlayIcon, HelpSquareIcon } from "@hugeicons/core-free-icons";
 import { NavLink } from "react-router";
 import "../style/quizcard.css";
 import Loading from "../components/Loading";
-
+import { useQuiz } from "../contexts/QuizContext";
 const API_BASE_URL = "http://localhost:5000/api";
-
-interface QuizHistory {
-  participationId: string;
-  quiz: Quiz;
-  score: number;
-  joinedAt: string;
-  stats: {
-    totalQuestions: number;
-    correctAnswers: number;
-    incorrectAnswers: number;
-    correctPercentage: number;
-  };
-}
 
 export default function Activity() {
   const { user } = useUser();
-  const [quizHistory, setQuizHistory] = useState<QuizHistory[]>([]);
+  const { getToken } = useAuth();
+  const { quizHistory, setQuizHistory } = useQuiz();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchQuizHistory = async () => {
-    if (!user?.id) return;
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/quiz/history/${user.id}`);
-      
-      if (!response.ok) throw new Error("Failed to fetch quiz history");
-      
-      const data = await response.json();
-      if (data.success && data.data) {
-        const highestScores = new Map<string, QuizHistory>();
-        data.data.forEach((history: QuizHistory) => {
-          const quizId = history.quiz._id;
-          const existingHistory = highestScores.get(quizId);
+      if (!user?.id) return;
 
-          if (!existingHistory || history.score > existingHistory.score) {
-            highestScores.set(quizId, history);
+      try {
+        setLoading(true);
+        const token = await getToken();
+        const response = await fetch(
+          `http://localhost:5000/api/quiz/history/${user.id}`,
+          {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
           }
-        });
-        
-        const uniqueHistory = Array.from(highestScores.values())
-          .sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime());
-        
-        setQuizHistory(uniqueHistory);
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch quiz history");
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          // Filter to get only the highest score attempt for each quiz
+          const uniqueQuizzes = data.data.reduce((acc: QuizHistory[], current: QuizHistory) => {
+            const existingQuiz = acc.find(item => item.quiz._id === current.quiz._id);
+            
+            if (!existingQuiz) {
+              // If this quiz hasn't been added yet, add it
+              acc.push(current);
+            } else if (current.score > existingQuiz.score) {
+              // If this attempt has a higher score, replace the existing one
+              const index = acc.findIndex(item => item.quiz._id === current.quiz._id);
+              acc[index] = current;
+            }
+            
+            return acc;
+          }, []);
+
+          // Sort by joinedAt in descending order (most recent first)
+          uniqueQuizzes.sort((a: QuizHistory, b: QuizHistory) => 
+            new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+          );
+
+          setQuizHistory(uniqueQuizzes);
+        }
+      } catch (error) {
+        console.error("Error fetching quiz history:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching quiz history:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   useEffect(() => {
     if (user?.id) {

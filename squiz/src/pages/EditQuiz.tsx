@@ -47,6 +47,55 @@ export default function EditQuiz() {
   const navigate = useNavigate();
   const { getToken, userId } = useAuth();
 
+  // Add state for unauthorized access
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
+
+  // Add useEffect to check authorization
+  useEffect(() => {
+    const checkAuthorization = async () => {
+      if (!id || !userId) {
+        setIsUnauthorized(true);
+        return;
+      }
+
+      try {
+        const token = await getToken();
+        if (!token) {
+          setIsUnauthorized(true);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          setIsUnauthorized(true);
+          return;
+        }
+
+        const data = await response.json();
+
+        const isSuccess = data.success;
+        const isCreator = data.data.creator === userId;
+
+        if (!isSuccess || !isCreator) {
+          setIsUnauthorized(true);
+          return;
+        }
+
+        setIsUnauthorized(false);
+      } catch (error) {
+        console.error("Error checking authorization:", error);
+        setIsUnauthorized(true);
+      }
+    };
+
+    checkAuthorization();
+  }, [id, userId, getToken]);
+
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
     setIsModal((preVal) => !preVal);
   };
@@ -544,6 +593,24 @@ export default function EditQuiz() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
           <div className="text-xl">Loading quiz...</div>
         </div>
+      </div>
+    );
+  }
+
+  if (isUnauthorized) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="text-2xl font-semibold text-red-wine mb-4">
+          Bạn không có quyền chỉnh sửa quiz này
+        </div>
+        <button
+          onClick={() => {
+            navigate('/dashboard/my-quiz', { replace: true });
+          }}
+          className="px-4 py-2 bg-orange text-white rounded btn-hover"
+        >
+          Quay lại
+        </button>
       </div>
     );
   }

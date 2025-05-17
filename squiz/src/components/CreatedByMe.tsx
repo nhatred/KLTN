@@ -75,7 +75,7 @@ export default function CreatedByMe() {
       ) : (
         <div className=" grid grid-cols-3 gap-5">
             {filteredQuizzes.map((quiz: Quiz) => (
-            <NavLink to={"/edit-quiz/" + quiz._id}>
+            <NavLink to={"/edit-quiz/" + quiz._id} key={quiz._id}>
                 <QuizzCard key={quiz._id} quiz={quiz} handleCardClick={() => {}}/>
             </NavLink>
             

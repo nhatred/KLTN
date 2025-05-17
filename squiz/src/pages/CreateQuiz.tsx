@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router";
 import Quizbar from "../components/Quizbar";
 import React, { useEffect, useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import MultipleChoices from "../components/MultipleChoices";
 import { useForm } from "react-hook-form";
 import { Question } from "../types/Question";
@@ -43,6 +43,8 @@ const SCORE_OPTIONS = [1, 2, 3, 4, 5];
 const API_BASE_URL = "http://localhost:5000/api";
 
 export default function CreateQuiz() {
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
 
   const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
@@ -57,7 +59,6 @@ export default function CreateQuiz() {
 
   const [isModal, setIsModal] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false); //Modal Update Question
-  const { getToken } = useAuth();
   const [isFormQuestion, setIsFormQuestion] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -222,7 +223,11 @@ export default function CreateQuiz() {
       setIsSaving(true);
       const token = await getToken();
       const formData = new FormData();
-      formData.append("creator", "User1");
+      formData.append("creator", user?.id || "");
+      formData.append("creatorInfo", JSON.stringify({
+        name: user?.fullName,
+        avatar: user?.imageUrl,
+      }));
       formData.append("name", quizData.name);
       formData.append("topic", quizData.topic);
       formData.append("difficulty", quizData.difficulty);

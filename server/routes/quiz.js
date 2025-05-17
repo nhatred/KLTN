@@ -14,7 +14,7 @@ import {
   getQuizSession,
   completeQuizSession
 } from "../controllers/quizController.js";
-import { protectCreator } from "../middlewares/authMiddleware.js";
+import { protectCreator, checkQuizOwnership } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 

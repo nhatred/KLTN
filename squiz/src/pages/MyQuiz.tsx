@@ -6,7 +6,10 @@ import {
   Clock02Icon,
   InLoveIcon,
 } from "@hugeicons/core-free-icons";
+import { useQuiz } from "../contexts/QuizContext";
+
 export default function MyQuiz() {
+  const { quizHistory } = useQuiz();
   const [createdByMeCount, setCreatedByMeCount] = useState(0);
   return (
     <div className="pt-32 grid grid-cols-5 items-start gap-y-5 gap-x-10">
@@ -46,7 +49,7 @@ export default function MyQuiz() {
                 <HugeiconsIcon icon={Clock02Icon} />
                 <p className="font-semibold">Trước đây đã sử dụng</p>
               </div>
-              <p className="font-semibold">0</p>
+              <p className="font-semibold">{quizHistory.length}</p>
             </NavLink>
 
             <NavLink

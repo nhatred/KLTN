@@ -124,6 +124,15 @@ export default function Navbar() {
       <div className="flex items-center gap-5">
         {user && (
           <NavLink
+            to="/create-room"
+            className="flex bg-gray-100 btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={20} />
+            <p>Tạo phòng</p>
+          </NavLink>
+        )}
+        {user && (
+          <NavLink
             to="/create-quiz"
             className="flex bg-orange btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
           >

@@ -11,10 +11,13 @@ import HostedQuizzes from "./components/HostedQuizzes";
 import LikedQuizzes from "./components/LikedQuizzes";
 import EditQuiz from "./pages/EditQuiz";
 import JoinQuiz from "./pages/JoinQuiz";
+import { QuizProvider } from "./contexts/QuizContext";
+import CreateRoom from "./pages/CreateRoom";
+import JoinRoom from "./pages/JoinRoom";
 function App() {
   return (
-    <>
-      <BrowserRouter>
+    <BrowserRouter>
+      <QuizProvider>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/dashboard" element={<MainLayout />}>
@@ -30,9 +33,11 @@ function App() {
           <Route path="/create-quiz" element={<CreateQuiz />} />
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />
+          <Route path="/create-room" element={<CreateRoom />} />
+          <Route path="/join-room/:id" element={<JoinRoom />} />
         </Routes>
-      </BrowserRouter>
-    </>
+      </QuizProvider>
+    </BrowserRouter>
   );
 }
 

@@ -32,6 +32,7 @@ input {
 .btn-hover,
 button {
   transition: all 0.2s linear;
+  cursor: pointer;
 }
 .box-shadow-hover {
   transition: all 0.2s linear;

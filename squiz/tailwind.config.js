@@ -11,6 +11,8 @@ export default {
         background: "#fcfbfa",
         darkblue: "#153a43",
         dim: "#829095",
+        rgba: "rgb(104 104 104 / 50%)",
+        littleblue: "rgb(42, 48, 63)",
       },
       borderWidth: {
         1: "1px",

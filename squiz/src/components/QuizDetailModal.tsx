@@ -12,10 +12,8 @@ import {
 import { NavLink } from "react-router";
 import "../style/quizcard.css";
 import { Quiz } from "../types/Quiz";
-import { useUser } from "@clerk/clerk-react";
 
 export default function QuizDetailModal({ quiz, onClose }: { quiz: Quiz, onClose: () => void }) {
-  const { user } = useUser();
   const formatPlayCount = (count: number) => {
     if (count >= 1000000) {
       return (count / 1000000).toFixed(1) + 'M';
@@ -119,13 +117,13 @@ export default function QuizDetailModal({ quiz, onClose }: { quiz: Quiz, onClose
           </div>
           <div className="flex items-center gap-3 mb-6 border-t border-gray-200 pt-4">
             <img 
-              src={user?.imageUrl || "/assets/default-avatar.png"} 
+              src={quiz?.creatorInfo?.avatar} 
               alt="Creator" 
               className="w-12 h-12 rounded-full object-cover border-2 border-gray-200" 
             />
             <div>
               <p className="text-sm text-gray-500">Tạo bởi</p>
-              <p className="font-semibold">{user?.fullName || "Người dùng ẩn danh"}</p>
+              <p className="font-semibold">{quiz?.creatorInfo?.name || "Người dùng ẩn danh"}</p>
             </div>
             <div className="ml-auto text-right">
               <p className="text-sm text-gray-500">Ngày đăng</p>

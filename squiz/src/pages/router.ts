@@ -10,6 +10,8 @@ import HostedQuizzes from "../components/HostedQuizzes";
 import LikedQuizzes from "../components/LikedQuizzes";
 import EditQuiz from "./EditQuiz";
 import JoinQuiz from "./JoinQuiz";
+import CreateRoom from "./CreateRoom";
+import JoinRoom from "./JoinRoom";
 
 const router = createBrowserRouter([
   {
@@ -55,6 +57,14 @@ const router = createBrowserRouter([
   {
     path: "/join-quiz/:id",
     Component: JoinQuiz,
+  },
+  {
+    path: "/create-room",
+    Component: CreateRoom,
+  },
+  {
+    path: "/join-room/:id",
+    Component: JoinRoom,
   },
 ]);
 

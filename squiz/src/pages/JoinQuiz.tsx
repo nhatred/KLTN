@@ -205,7 +205,11 @@ export default function JoinQuiz() {
     totalPlays: 0,
     quizRating: [],
     scorePerQuestion: 1,
-    timePerQuestion: 30
+    timePerQuestion: 30,
+    creatorInfo: {
+      name: "",
+      avatar: ""
+    }
   });
 
   // Quiz state
@@ -678,10 +682,10 @@ export default function JoinQuiz() {
     const maxTime = currentQ?.timePerQuestion || quizData.timePerQuestion;
     const progressPercent = (timeLeft / maxTime) * 100;
     
-    // Generate time markers
+    // Tao thanh tien trinh
     const timeMarkers = [];
     for (let i = 1; i < maxTime; i++) {
-      if (i % 5 === 0 || maxTime <= 10) {  // Show markers at 5-second intervals, or all for short questions
+      if (i % 5 === 0 || maxTime <= 10) {  
         const position = (i / maxTime) * 100;
         timeMarkers.push(
           <div 
