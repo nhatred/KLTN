@@ -8,12 +8,15 @@ import {
   SearchSquareIcon,
   SearchAreaIcon,
   Add01Icon,
+  AirplayLineIcon,
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
+import SelectQuizModal from "./SelectQuizModal";
 
 export default function Navbar() {
   const { openSignIn } = useClerk();
   const { user } = useUser();
+  const [isSelectQuizModalOpen, setIsSelectQuizModalOpen] = useState(false);
 
   const [lastScrollY, setLastScrollY] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -47,109 +50,130 @@ export default function Navbar() {
   }, [lastScrollY]);
 
   return (
-    <nav
-      className={`h-16 fixed z-50 bg-background left-0 right-0 py-2 px-8 flex justify-between items-center transition-all duration-300 ${
-        visible ? "translate-y-0" : "-translate-y-full"
-      } ${showShadow ? "shadow-md" : "shadow-none"}`}
-    >
-      <div className="flex items-center gap-5">
-        <NavLink to="/">
-          <h1 className="text-3xl font-black">Squizz</h1>
-        </NavLink>
-        <form className="w-80">
-          <label
-            htmlFor="default-search"
-            className="mb-2 text-sm font-medium text-gray-900 sr-only dark:text-gray-300"
-          >
-            Search
-          </label>
-          <div className=" flex border-orange rounded-lg border-1">
-            <div className="flex inset-y-0 items-center pl-2 pointer-events-none">
-              <HugeiconsIcon icon={SearchAreaIcon} />
-            </div>
-            <input
-              type="search"
-              id="default-search"
-              className="block p-2 w-full text-sm "
-              placeholder="Tìm Squiz..."
-              required
-            />
-            <button
-              type="submit"
-              className="bg-orange font-medium rounded-e-lg p-2"
+    <>
+      <nav
+        className={`h-16 fixed z-50 bg-background left-0 right-0 py-2 px-8 flex justify-between items-center transition-all duration-300 ${
+          visible ? "translate-y-0" : "-translate-y-full"
+        } ${showShadow ? "shadow-md" : "shadow-none"}`}
+      >
+        <div className="flex items-center gap-5">
+          <NavLink to="/">
+            <h1 className="text-3xl font-black">Squizz</h1>
+          </NavLink>
+          <form className="w-80">
+            <label
+              htmlFor="default-search"
+              className="mb-2 text-sm font-medium text-gray-900 sr-only dark:text-gray-300"
             >
-              <HugeiconsIcon icon={SearchSquareIcon} size={26} />
-            </button>
-          </div>
-        </form>
-        <NavLink
-          to="/dashboard/home"
-          className={({ isActive }) =>
-            `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
-              isActive ? "btn-active text-orange" : ""
-            }`
-          }
-        >
-          <HugeiconsIcon icon={Home01Icon} />
-          <p>Trang chủ</p>
-        </NavLink>
-
-        {user && (
-          <NavLink
-            to="/dashboard/activity"
-            className={({ isActive }) =>
-              `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
-                isActive ? "btn-active text-orange" : ""
-              }`
-            }
-          >
-            <HugeiconsIcon icon={Clock04Icon} />
-            <p>Hoạt động</p>
-          </NavLink>
-        )}
-        {user && (
-          <NavLink
-            to="/dashboard/my-quiz/"
-            className={({ isActive }) =>
-              `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
-                isActive ? "btn-active text-orange" : ""
-              }`
-            }
-          >
-            <HugeiconsIcon icon={Cards02Icon} />
-            <p>Quiz của bạn</p>
-          </NavLink>
-        )}
-      </div>
-      <div className="flex items-center gap-5">
-        {user && (
-          <NavLink
-            to="/create-room"
-            className="flex bg-gray-100 btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={20} />
-            <p>Tạo phòng</p>
-          </NavLink>
-        )}
-        {user && (
-          <NavLink
-            to="/create-quiz"
-            className="flex bg-orange btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={20} />
-            <p>Tạo một Squiz</p>
-          </NavLink>
-        )}
-        {user ? (
-          <UserButton />
-        ) : (
-          <div onClick={() => openSignIn()}>
-            <div className="p-3 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
-              <p>Đăng nhập</p>
+              Search
+            </label>
+            <div className=" flex border-orange rounded-lg border-1">
+              <div className="flex inset-y-0 items-center pl-2 pointer-events-none">
+                <HugeiconsIcon icon={SearchAreaIcon} />
+              </div>
+              <input
+                type="search"
+                id="default-search"
+                className="block p-2 w-full text-sm "
+                placeholder="Tìm Squiz..."
+                required
+              />
+              <button
+                type="submit"
+                className="bg-orange font-medium rounded-e-lg p-2"
+              >
+                <HugeiconsIcon icon={SearchSquareIcon} size={26} />
+              </button>
             </div>
-          </div>
-        )}
-      </div>
-    </nav>
+          </form>
+          <NavLink
+            to="/dashboard/home"
+            className={({ isActive }) =>
+              `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                isActive ? "btn-active text-orange" : ""
+              }`
+            }
+          >
+            <HugeiconsIcon icon={Home01Icon} />
+            <p>Trang chủ</p>
+          </NavLink>
+
+          {user && (
+            <NavLink
+              to="/dashboard/activity"
+              className={({ isActive }) =>
+                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                  isActive ? "btn-active text-orange" : ""
+                }`
+              }
+            >
+              <HugeiconsIcon icon={Clock04Icon} />
+              <p>Hoạt động</p>
+            </NavLink>
+          )}
+          {user && (
+            <NavLink
+              to="/dashboard/my-quiz/"
+              className={({ isActive }) =>
+                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                  isActive ? "btn-active text-orange" : ""
+                }`
+              }
+            >
+              <HugeiconsIcon icon={Cards02Icon} />
+              <p>Quiz của bạn</p>
+            </NavLink>
+          )}
+
+          {user && (
+            <NavLink
+              to="/dashboard/room-manager/"
+              className={({ isActive }) =>
+                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                  isActive ? "btn-active text-orange" : ""
+                }`
+              }
+            >
+              <HugeiconsIcon icon={AirplayLineIcon} />
+              <p>Quản lý phòng thi</p>
+            </NavLink>
+          )}
+        </div>
+        <div className="flex items-center gap-5">
+          {user && (
+            <button
+              onClick={() => setIsSelectQuizModalOpen(true)}
+              className="flex bg-gray-100 btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={20} />
+              <p>Tạo phòng</p>
+            </button>
+          )}
+          {user && (
+            <NavLink
+              to="/create-quiz"
+              className="flex bg-orange btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={20} />
+              <p>Tạo một Squiz</p>
+            </NavLink>
+          )}
+          {user ? (
+            <UserButton />
+          ) : (
+            <div onClick={() => openSignIn()}>
+              <div className="p-3 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+                <p>Đăng nhập</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      <SelectQuizModal
+        isOpen={isSelectQuizModalOpen}
+        onClose={() => setIsSelectQuizModalOpen(false)}
+      />
+    </>
   );
 }

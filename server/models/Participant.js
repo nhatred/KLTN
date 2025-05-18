@@ -8,7 +8,6 @@ const participantSchema = new mongoose.Schema({
   quiz: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Quiz",
-    required: true
   },
   user: { 
     type: String, 
@@ -18,9 +17,33 @@ const participantSchema = new mongoose.Schema({
   temporaryUsername: { type: String }, // For non-logged in users
   isLoggedIn: { type: Boolean, default: false },
   score: { type: Number, default: 0 },
-  deviceId: { type: String }, // Device identifier for tracking sessions
-  submissions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Submission" }],
   joinedAt: { type: Date, default: Date.now },
+
+  submissions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Submission" }],
+  //câu hỏi hiện tại mà người tham gia đang làm
+  currentQuestionIndex: { type: Number, default: 0 },
+  //ds câu chưa hoàn thành
+  remainingQuestions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
+  //ds câu đã hoàn thành
+   answeredQuestions: [{
+    questionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Question"
+    },
+    submissionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Submission"
+    }
+  }],
+      // Lưu ID kết nối socket
+  connectionId: { type: String },
+  // Lưu trữ thời gian lần cuối hoạt động
+  lastActive: { type: Date, default: Date.now },
+  // Lưu thông tin thiết bị
+  deviceInfo: { type: Object },
+  check: { type: Boolean, default: false },
+}, {
+  timestamps: true
 });
 
 // Add indexes for better query performance

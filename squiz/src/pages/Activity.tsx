@@ -9,7 +9,6 @@ import { NavLink } from "react-router";
 import "../style/quizcard.css";
 import Loading from "../components/Loading";
 import { useQuiz } from "../contexts/QuizContext";
-const API_BASE_URL = "http://localhost:5000/api";
 
 export default function Activity() {
   const { user } = useUser();
@@ -62,6 +61,7 @@ export default function Activity() {
           );
 
           setQuizHistory(uniqueQuizzes);
+        
         }
       } catch (error) {
         console.error("Error fetching quiz history:", error);
@@ -73,6 +73,7 @@ export default function Activity() {
   useEffect(() => {
     if (user?.id) {
       fetchQuizHistory();
+      console.log(quizHistory);
     }
   }, [user?.id]);
 

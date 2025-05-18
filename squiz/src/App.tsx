@@ -14,6 +14,7 @@ import JoinQuiz from "./pages/JoinQuiz";
 import { QuizProvider } from "./contexts/QuizContext";
 import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
+import RoomManager from "./pages/RoomManager";
 function App() {
   return (
     <BrowserRouter>
@@ -29,12 +30,14 @@ function App() {
               <Route path="hosted-quizzes" element={<HostedQuizzes />} />
               <Route path="liked-quizzes" element={<LikedQuizzes />} />
             </Route>
+            <Route path="room-manager" element={<RoomManager />} />
           </Route>
           <Route path="/create-quiz" element={<CreateQuiz />} />
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />
-          <Route path="/create-room" element={<CreateRoom />} />
+          <Route path="/create-room/:id" element={<CreateRoom />} />
           <Route path="/join-room/:id" element={<JoinRoom />} />
+          
         </Routes>
       </QuizProvider>
     </BrowserRouter>

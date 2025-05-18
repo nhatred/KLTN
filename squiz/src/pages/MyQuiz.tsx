@@ -7,8 +7,15 @@ import {
   InLoveIcon,
 } from "@hugeicons/core-free-icons";
 import { useQuiz } from "../contexts/QuizContext";
+import { useAuth } from "@clerk/clerk-react";
+async function getToken() {
+  const { getToken } = useAuth();
+  const token = await getToken();
+  console.log(token);
+}
 
 export default function MyQuiz() {
+  getToken();
   const { quizHistory } = useQuiz();
   const [createdByMeCount, setCreatedByMeCount] = useState(0);
   return (

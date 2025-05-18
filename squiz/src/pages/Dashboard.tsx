@@ -41,23 +41,42 @@ export default function Dashboard() {
   };
 
   const fetchRecentQuizzes = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log("No user ID available");
+      return;
+    }
     
     try {
+      console.log(`Fetching quiz history for user: ${user.id}`);
       const response = await fetch(`${API_BASE_URL}/quiz/history/${user.id}`);
       
-      if (!response.ok) throw new Error("Failed to fetch recent quizzes");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to fetch recent quizzes");
+      }
       
       const data = await response.json();
+      console.log("Received quiz history data:", data);
+      
       if (data.success && data.data) {
         // Lấy danh sách quiz từ lịch sử tham gia
         const quizzes = data.data.map((history: any) => history.quiz as Quiz);
+        console.log("Processed quizzes:", quizzes);
+        
         // Loại bỏ các quiz trùng lặp và giới hạn 6 quiz gần nhất
-        const uniqueQuizzes = Array.from(new Map(quizzes.map((quiz: Quiz) => [quiz._id, quiz])).values()).slice(0, 6) as Quiz[];
+        const uniqueQuizzes = Array.from(
+          new Map(quizzes.map((quiz: Quiz) => [quiz._id, quiz])).values()
+        ).slice(0, 6) as Quiz[];
+        
+        console.log("Final unique quizzes:", uniqueQuizzes);
         setRecentQuizzes(uniqueQuizzes);
+      } else {
+        console.log("No quiz history data found");
+        setRecentQuizzes([]);
       }
     } catch (error) {
       console.error("Error fetching recent quizzes:", error);
+      setRecentQuizzes([]);
     }
   };
 

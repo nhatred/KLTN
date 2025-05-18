@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Calendar03Icon, Clock01Icon } from '@hugeicons/core-free-icons';
 
-export default function DataPicker() {
+interface DataPickerProps {
+  onDateTimeChange: (dateTime: string) => void;
+}
+
+export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -38,15 +42,9 @@ export default function DataPicker() {
       const vnDateTime = new Date(dateTime.getTime() + (7 * 60 * 60 * 1000));
       setDate(vnDateTime.toISOString().split('T')[0]);
       setTime(vnDateTime.toISOString().split('T')[1].substring(0, 5));
+      onDateTimeChange(roomSettings.startTime);
     }
   }, []);
-
-  const handleSettingChange = (e: any) => {
-    setRoomSettings({
-      ...roomSettings,
-      [e.target.name]: e.target.value
-    });
-  };
 
   const handleDateChange = (e: any) => {
     setDate(e.target.value);
@@ -55,6 +53,7 @@ export default function DataPicker() {
       ...roomSettings,
       startTime: newDateTime
     });
+    onDateTimeChange(newDateTime);
   };
 
   const handleTimeChange = (e: any) => {
@@ -64,6 +63,7 @@ export default function DataPicker() {
       ...roomSettings,
       startTime: newDateTime
     });
+    onDateTimeChange(newDateTime);
   };
 
   const toggleDatePicker = () => {
@@ -115,7 +115,13 @@ export default function DataPicker() {
               type="datetime-local"
               name="startTime"
               value={roomSettings.startTime}
-              onChange={handleSettingChange}
+              onChange={(e) => {
+                setRoomSettings({
+                  ...roomSettings,
+                  startTime: e.target.value
+                });
+                onDateTimeChange(e.target.value);
+              }}
               className="hidden"
             />
           </div>

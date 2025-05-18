@@ -1,15 +1,17 @@
-
-
-
-
-import { useState } from "react";
-import { NavLink, useNavigate } from "react-router";
-import { AlarmClockIcon, Backward01Icon, HelpSquareIcon, Quiz01Icon, ClockIcon, CursorInfo02Icon, Setting07Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useState } from "react";
+import { NavLink, useNavigate, useParams } from "react-router";
+import { AlarmClockIcon, Backward01Icon, HelpSquareIcon, Quiz01Icon, ClockIcon, CursorInfo02Icon, Setting07Icon, LiveStreaming02Icon, DigitalClockIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import "../style/checkbox2.css";
 import DataPicker from "../components/DataPicker";
+import { Quiz } from "../types/Quiz";
+import {useAuth} from "@clerk/clerk-react";
+
 export default function CreateRoom() {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
+    const { getToken } = useAuth();
+    const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [roomSettings, setRoomSettings] = useState({
     startTime: "",
     shuffleAnswers: true,
@@ -28,6 +30,46 @@ export default function CreateRoom() {
     }));
   };
 
+  const handleDateTimeChange = (dateTime: string) => {
+    setRoomSettings(prev => ({
+      ...prev,
+      startTime: dateTime
+    }));
+  };
+
+  console.log(id);
+
+  const getQuiz = async () => {
+    const response = await fetch(`http://localhost:5000/api/quiz/${id}`);
+    const data = await response.json();
+    setQuiz(data.data);
+  }
+
+  useEffect(() => {
+    getQuiz();
+  }, []);
+
+  const handleCreateRoom = async () => {
+    const token = await getToken();
+    const response = await fetch(`http://localhost:5000/api/quizRoom`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        quizId: id,
+        durationMinutes: roomSettings.totalTime,
+        startTime: roomSettings.startTime
+      }),
+    });
+    const data = await response.json();
+    if (!data.success) {
+      console.error("Error creating room:", data.message);
+      return;
+    }
+    console.log("Room created successfully:", data);
+  }
   return (
     <div className="bg-background h-screen">
                  <nav className="h-16 fixed left-0 right-0 border-b-1 z-10 bg-background py-2 px-4 flex justify-between items-center">
@@ -44,19 +86,27 @@ export default function CreateRoom() {
                     <p className="text-gray-500 text-lg font-bold">|</p>
                     <div className="flex items-center gap-2">
                         <HugeiconsIcon icon={Quiz01Icon} />
-                        <p className="font-semibold">Tên quiz</p>
+                      <p className="font-semibold">{ quiz?.name}</p>
                     </div>
                     <div className="flex items-center gap-2">
                         <HugeiconsIcon icon={HelpSquareIcon} />
-                        <p className="font-semibold">20 câu hỏi</p>
+                        <p className="font-semibold">{quiz?.questions.length} câu hỏi</p>
                     </div>
-                </div>
-                <NavLink to="/join-room/:id" className="flex items-center gap-5">
-                    <div className="p-3 flex items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
-                        <i className="fa-solid fa-floppy-disk"></i>
+              </div>
+              <div className="flex items-center gap-2">
+                  <NavLink to="/join-room/:id" className="flex items-center gap-5">
+                    <div className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+                        <HugeiconsIcon icon={LiveStreaming02Icon} />
+                        <p>Trực tiếp</p>
+                    </div>
+                </NavLink>
+                <NavLink to="/dashboard/room-manager/" className="flex items-center gap-5">
+                    <div onClick={handleCreateRoom} className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+                        <HugeiconsIcon icon={DigitalClockIcon} />
                         <p>Tạo phòng</p>
                     </div>
                 </NavLink>
+              </div>
             </nav>
       <main className="flex justify-center items-center h-screen ">
               <div className="bg-white p-6 container w-2/5 mx-auto rounded-lg box-shadow">
@@ -73,7 +123,7 @@ export default function CreateRoom() {
                               <HugeiconsIcon icon={AlarmClockIcon} />
                 <p>Thời gian bắt đầu</p>
               </label>
-              <DataPicker />
+              <DataPicker onDateTimeChange={handleDateTimeChange} />
             </div>
             {/* Cài đặt thời gian */}
                         <div className="space-y-4 rounded-lg">

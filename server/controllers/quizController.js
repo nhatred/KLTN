@@ -448,6 +448,7 @@ async function getUserQuizHistory(req, res) {
     const userId = req.params.userId;
     
     if (!userId) {
+      console.log("No userId provided in request");
       return res.status(400).json({
         success: false,
         message: "User ID is required"
@@ -455,6 +456,16 @@ async function getUserQuizHistory(req, res) {
     }
     
     console.log(`Fetching quiz history for user: ${userId}`);
+    
+    // Kiểm tra xem user có tồn tại không
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log(`User not found with ID: ${userId}`);
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
     
     // Tìm tất cả các lần tham gia của người dùng, sắp xếp theo thời gian mới nhất
     const participations = await Participant.find({ 
@@ -464,10 +475,7 @@ async function getUserQuizHistory(req, res) {
     .populate({
       path: 'quiz',
       select: '_id name imageUrl difficulty topic totalPlays createdAt',
-      populate: {
-        path: 'questions',
-        select: '_id questionText'
-      }
+      model: 'Quiz'
     })
     .sort({ joinedAt: -1 })
     .lean()
@@ -478,6 +486,11 @@ async function getUserQuizHistory(req, res) {
     // Tạo thông tin chi tiết hơn cho mỗi lần tham gia
     const quizHistory = await Promise.all(participations.map(async (participation) => {
       try {
+        if (!participation.quiz) {
+          console.log(`Skipping participation ${participation._id} - no quiz data`);
+          return null;
+        }
+
         // Lấy danh sách submissions
         const submissions = await Submission.find({
           participant: participation._id
@@ -492,12 +505,27 @@ async function getUserQuizHistory(req, res) {
         const correctPercentage = totalAnswers > 0 
           ? Math.round((correctAnswers / totalAnswers) * 100) 
           : 0;
+
+        // Lấy thông tin câu hỏi của quiz
+        const quizQuestions = await Question.find({ quizId: participation.quiz._id })
+          .select('_id questionText')
+          .lean()
+          .exec();
         
         return {
           participationId: participation._id,
-          quiz: participation.quiz,
-          score: participation.score,
-          joinedAt: participation.joinedAt,
+          quiz: {
+            _id: participation.quiz._id,
+            name: participation.quiz.name,
+            imageUrl: participation.quiz.imageUrl,
+            difficulty: participation.quiz.difficulty,
+            topic: participation.quiz.topic,
+            totalPlays: participation.quiz.totalPlays,
+            createdAt: participation.quiz.createdAt,
+            questions: quizQuestions || []
+          },
+          score: participation.score || 0,
+          joinedAt: participation.joinedAt || participation.createdAt,
           stats: {
             totalQuestions: totalAnswers,
             correctAnswers,

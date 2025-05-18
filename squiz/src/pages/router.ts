@@ -12,7 +12,7 @@ import EditQuiz from "./EditQuiz";
 import JoinQuiz from "./JoinQuiz";
 import CreateRoom from "./CreateRoom";
 import JoinRoom from "./JoinRoom";
-
+import RoomManager from "./RoomManager";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -59,12 +59,16 @@ const router = createBrowserRouter([
     Component: JoinQuiz,
   },
   {
-    path: "/create-room",
+    path: "/create-room/:id",
     Component: CreateRoom,
   },
   {
     path: "/join-room/:id",
     Component: JoinRoom,
+  },
+  {
+    path: "/room-manager",
+    Component: RoomManager,
   },
 ]);
 

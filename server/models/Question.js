@@ -17,7 +17,6 @@ const questionSchema = new mongoose.Schema(
         "dragAndDrop",
         "dropdown",
       ],
-      required: true,
     },
     timePerQuestion: { type: Number },
     scorePerQuestion: { type: Number },

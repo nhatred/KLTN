@@ -26,8 +26,12 @@ const quizSchema = new mongoose.Schema(
       { userId: { type: String }, rating: { type: Number, min: 1, max: 5 } },
     ],
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+quizSchema.virtual('questionCount').get(function() {
+  return this.questions?.length || 0;
+});
 
 const Quiz = mongoose.model("Quiz", quizSchema);
 export default Quiz;
