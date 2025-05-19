@@ -851,7 +851,6 @@ export default function JoinQuiz() {
     if (!id || !quizState.showQuiz || isLoading || quizState.showResults) return;
     
     // Lưu trạng thái hiện tại
-    const currentTimestamp = new Date().getTime();
     saveQuizSession(id, quizState, userAnswers, timeLeft, isSignedIn ? user?.id : null);
     
   }, [id, quizState, userAnswers, timeLeft, isLoading, isSignedIn, user?.id]);
