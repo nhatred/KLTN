@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { AlarmClockIcon, Backward01Icon, HelpSquareIcon, Quiz01Icon, ClockIcon, CursorInfo02Icon, Setting07Icon, LiveStreaming02Icon, DigitalClockIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import "../style/checkbox2.css";

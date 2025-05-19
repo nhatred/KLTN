@@ -32,7 +32,6 @@ const getDeviceId = () => {
 
 // Lưu trữ phiên chơi vào localStorage và server
 const saveQuizSession = async (quizId: string, quizState: any, userAnswers: UserAnswer[], timeLeft: number, userId: string | null) => {
-  const currentTimestamp = new Date().getTime();
   const deviceId = getDeviceId();
   
   // Không lưu phiên chơi nếu đang ở màn hình kết quả
@@ -47,7 +46,7 @@ const saveQuizSession = async (quizId: string, quizState: any, userAnswers: User
       quizState,
       userAnswers,
       timeLeft,
-      timestamp: currentTimestamp
+      timestamp: new Date().getTime()
     };
     
     localStorage.setItem(`quiz_session_${quizId}`, JSON.stringify(sessionData));
@@ -94,7 +93,7 @@ const saveQuizSession = async (quizId: string, quizState: any, userAnswers: User
 // Lấy phiên chơi quiz từ server hoặc localStorage
 const getQuizSession = async (quizId: string, userId: string | null) => {
   const deviceId = getDeviceId();
-  
+  console.log(userId)
   // Thử lấy từ server trước
   try {
     console.log(`Attempting to fetch session from server for quiz: ${quizId}`);
@@ -222,7 +221,7 @@ export default function JoinQuiz() {
   });
   
   const [timeLeft, setTimeLeft] = useState<number>(quizData.timePerQuestion);
-  const [timer, setTimer] = useState<NodeJS.Timeout | null>(null);  
+  const [timer, setTimer] = useState<ReturnType<typeof setInterval> | null>(null);  
   const [userAnswers, setUserAnswers] = useState<UserAnswer[]>([]);
   const [feedback, setFeedback] = useState<FeedbackState>({ 
     visible: false, 

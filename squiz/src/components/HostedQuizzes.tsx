@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useUser, useAuth } from "@clerk/clerk-react";
 import { format } from "date-fns";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PlayIcon, HelpSquareIcon, Bookmark02Icon, UserGroup03Icon } from "@hugeicons/core-free-icons";
+import { PlayIcon, HelpSquareIcon } from "@hugeicons/core-free-icons";
 import Loading from "./Loading";
 import { NavLink } from "react-router";
 import QuizDetailModal from "./QuizDetailModal";

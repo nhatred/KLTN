@@ -6,8 +6,7 @@ import { connectSocket } from "../services/socket";
 
 export default function Home() {
   const [roomCode, setRoomCode] = useState("");
-  const [username, setUsername] = useState("");
-  const [isJoinRoom, setIsJoinRoom] = useState(false);
+  const [username] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { userId } = useAuth();

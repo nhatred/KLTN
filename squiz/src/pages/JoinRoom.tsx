@@ -8,15 +8,13 @@ import { useAuth } from "@clerk/clerk-react";
 import { connectSocket, disconnectSocket } from "../services/socket";
 
 export default function JoinRoom() {
-    const [number, setNumber] = useState(1);
+    const [number] = useState(1);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState<string>("");
     const [endTimeRemaining, setEndTimeRemaining] = useState<string>("");
     const { id } = useParams();
     const location = useLocation();
     const [room, setRoom] = useState<Room | null>(location.state?.room || null);
-    const [loading, setLoading] = useState(!location.state?.room);
-    const [error, setError] = useState<string | null>(null);
     const { getToken } = useAuth();
 
     const handleEndQuiz = () => {
@@ -52,9 +50,7 @@ export default function JoinRoom() {
             }
         } catch (err) {
             console.error("Error fetching room:", err);
-            setError("Có lỗi xảy ra khi tải dữ liệu phòng");
-        } finally {
-            setLoading(false);
+          
         }
     }
 

@@ -9,7 +9,7 @@ import { useAuth } from "@clerk/clerk-react";
 export default function JoinRoomForStudent() {
     const { code } = useParams();
     const { getToken } = useAuth();
-    const [number, setNumber] = useState(1);
+    const [number] = useState(1);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState<string>("");
     const [room, setRoom] = useState<Room | null>(null);
