@@ -15,6 +15,7 @@ import { QuizProvider } from "./contexts/QuizContext";
 import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
 import RoomManager from "./pages/RoomManager";
+import JoinRoomForStudent from "./pages/JoinRoomForStudent";
 function App() {
   return (
     <BrowserRouter>
@@ -37,7 +38,7 @@ function App() {
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />
           <Route path="/create-room/:id" element={<CreateRoom />} />
           <Route path="/join-room/:id" element={<JoinRoom />} />
-          
+          <Route path="/join-room/code/:code" element={<JoinRoomForStudent />} />
         </Routes>
       </QuizProvider>
     </BrowserRouter>

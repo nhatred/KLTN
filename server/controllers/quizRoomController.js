@@ -43,12 +43,7 @@ import Quiz from '../models/Quiz.js';
             comparison: quiz.creator.toString() === hostId
           });
 
-          if (quiz.creator.toString() !== hostId) {
-            return res.status(403).json({ 
-              success: false,
-              message: 'Bạn không có quyền sử dụng quiz này' 
-            });
-          }
+        
       
           // Xử lý thời gian
           const now = new Date();
@@ -203,46 +198,50 @@ import Quiz from '../models/Quiz.js';
     // Lấy thông tin phòng qua Code
     async function getRoomByCode(req, res) {
         try {
-        const room = await QuizRoom.findOne({ roomCode: req.params.roomCode })
-            // .populate('quiz', 'name topic difficulty questionCount')
-            // .populate('host', 'name imageUrl');
+          console.log("req.params.roomCode", req.params.roomCode)
+          const room = await QuizRoom.findOne({ roomCode: req.params.roomCode })
+                .populate('quiz')
+                .populate('host')
+                .populate({
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: 'name imageUrl'
+                    }
+                })
+                .populate('questionOrder');
 
-        if (!room) {
-            return res.status(404).json({ 
-            success: false,
-            message: 'Không tìm thấy phòng thi với mã này' 
-            });
-        }
-
-        res.json({
-            success: true,
-            data: {
-            roomCode: room.roomCode,
-            quiz: room.quiz,
-            host: room.host,
-            status: room.status,
-            startTime: room.startTime,
-            endTime: room.endTime,
-            timeRemaining: room.timeRemaining,
-            durationMinutes: room.durationMinutes,
-            isActive: room.isActive
+            if (!room) {
+                return res.status(404).json({ 
+                    success: false,
+                    message: 'Không tìm thấy phòng thi với mã này' 
+                });
             }
-        });
+
+            res.json({
+                success: true,
+                data: room
+            });
         } catch (error) {
-        res.status(500).json({ 
-            success: false,
-            message: 'Lỗi khi lấy thông tin phòng',
-            error: error.message 
-        });
+            res.status(500).json({ 
+                success: false,
+                message: 'Lỗi khi lấy thông tin phòng',
+                error: error.message 
+            });
         }
     }
 
     // Lấy thông tin phòng qua id
     async function getRoomById(req, res) {
-        
-
         try {
-           
+          // Kiểm tra nếu id là MongoDB ObjectId hợp lệ
+          if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(404).json({ 
+              success: false,
+              message: 'ID phòng không hợp lệ' 
+            });
+          }
+
           const room = await QuizRoom.findById(req.params.id)
             .populate('quiz')
             .populate('host')
@@ -261,15 +260,6 @@ import Quiz from '../models/Quiz.js';
               message: 'Không tìm thấy phòng thi' 
             });
           }
-          
-          // Kiểm tra quyền
-          if (room.host._id.toString() !== req.userId) {
-            return res.status(403).json({ 
-              success: false,
-              message: 'Bạn không có quyền truy cập phòng này' 
-            });
-          }
-    
           res.json({ 
             success: true,
             data: room 

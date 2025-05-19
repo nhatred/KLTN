@@ -69,6 +69,35 @@ export default function CreateRoom() {
       return;
     }
     console.log("Room created successfully:", data);
+    // Navigate to RoomManager with a timestamp to force refresh
+    navigate(`/dashboard/room-manager?refresh=${Date.now()}`);
+    }
+    
+    const handleCreateRoomLive = async () => {
+    const token = await getToken();
+    const response = await fetch(`http://localhost:5000/api/quizRoom`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        quizId: id,
+        durationMinutes: roomSettings.totalTime,
+        startTime: roomSettings.startTime
+      }),
+    });
+    const data = await response.json();
+    if (!data.success) {
+      console.error("Error creating room:", data.message);
+      return;
+    }
+        console.log("Room created successfully:", data);
+        if(data.success){
+            navigate(`/join-room/${data.data._id}`);
+        }
+        // Navigate to RoomManager with a timestamp to force refresh
+           
   }
   return (
     <div className="bg-background h-screen">
@@ -94,18 +123,18 @@ export default function CreateRoom() {
                     </div>
               </div>
               <div className="flex items-center gap-2">
-                  <NavLink to="/join-room/:id" className="flex items-center gap-5">
-                    <div className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+                  <div className="flex items-center gap-5">
+                    <div onClick={handleCreateRoomLive} className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
                         <HugeiconsIcon icon={LiveStreaming02Icon} />
                         <p>Trực tiếp</p>
                     </div>
-                </NavLink>
-                <NavLink to="/dashboard/room-manager/" className="flex items-center gap-5">
+                </div>
+                <div className="flex items-center gap-5">
                     <div onClick={handleCreateRoom} className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
                         <HugeiconsIcon icon={DigitalClockIcon} />
                         <p>Tạo phòng</p>
                     </div>
-                </NavLink>
+                </div>
               </div>
             </nav>
       <main className="flex justify-center items-center h-screen ">

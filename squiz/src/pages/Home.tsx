@@ -38,7 +38,7 @@ export default function Home() {
       }, (response: any) => {
         if (response.success) {
           localStorage.setItem('participant', JSON.stringify(response.participant));
-          navigate(`/join-room/${response.participant._id}`, {
+          navigate(`/join-room/code/${roomCode}`, {
             state: {
               participant: response.participant,
               questions: response.questions,

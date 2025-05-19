@@ -37,9 +37,9 @@ import Quiz from '../models/Quiz.js';
         questionsCount: quiz.questions?.length
       });
 
-      if (room.status !== 'active') {
-        throw new Error('Phòng thi chưa mở');
-      }
+      // if (room.status !== 'active') {
+      //   throw new Error('Phòng thi chưa mở');
+      // }
 
       // Kiểm tra người dùng đã tham gia chưa
       let participant;

@@ -11,6 +11,7 @@ export interface Room {
   updatedAt: string;
   quiz: Quiz;
   startTime: string | null;
+  endTime: string | null;
   durationMinutes: number;
   participants: string[];
   questionOrder: string[];

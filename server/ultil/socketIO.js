@@ -2,6 +2,8 @@ import { joinRoom, handleDisconnect, getParticipantStatus } from '../controllers
 import { submitAnswer, syncSubmissions } from '../controllers/SubmissionController.js';
 import { endRoom, getQuizRoomEndTime, updateRoomActive } from '../controllers/QuizRoomController.js';
 import Participant from '../models/Participant.js'
+import QuizRoom from '../models/QuizRoom.js';
+
 const setupQuizSocket = (io) => {
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
@@ -28,6 +30,19 @@ const setupQuizSocket = (io) => {
             timeRemaining: result.timeRemaining,
             progress: result.progress
           });
+
+          // Thông báo cho tất cả người dùng trong phòng về người tham gia mới
+          const updatedRoom = await QuizRoom.findById(result.participant.quizRoom)
+            .populate('participants')
+            .populate({
+              path: 'participants',
+              populate: {
+                path: 'user',
+                select: 'name imageUrl'
+              }
+            });
+          
+          io.to(`room_${result.participant.quizRoom}`).emit('participantJoined', updatedRoom);
         } else {
           callback(result);
         }
@@ -98,8 +113,30 @@ const setupQuizSocket = (io) => {
         }
     });
 
-    socket.on('joinUserRoomManager', (userId) => {
-      socket.join(userId);
+    socket.on('joinUserRoomManager', async (roomId) => {
+      try {
+        console.log('Host joining room:', roomId);
+        // Join room
+        socket.join(`room_${roomId}`);
+        
+        // Get initial room data
+        const room = await QuizRoom.findById(roomId)
+          .populate('participants')
+          .populate({
+            path: 'participants',
+            populate: {
+              path: 'user',
+              select: 'name imageUrl'
+            }
+          });
+
+        if (room) {
+          // Send initial room data to host
+          socket.emit('roomData', room);
+        }
+      } catch (err) {
+        console.error('Error in joinUserRoomManager:', err);
+      }
     });
 
     socket.on('closeRoom', async (data, callback) => {
@@ -148,7 +185,30 @@ const setupQuizSocket = (io) => {
 
     // Xử lý ngắt kết nối
     socket.on('disconnect', async () => {
-      await handleDisconnect(socket.id);
+      try {
+        const participant = await Participant.findOne({ connectionId: socket.id });
+        if (participant) {
+          // Cập nhật trạng thái người tham gia
+          participant.connectionId = null;
+          participant.lastActive = new Date();
+          await participant.save();
+
+          // Thông báo cho tất cả người dùng trong phòng
+          const updatedRoom = await QuizRoom.findById(participant.quizRoom)
+            .populate('participants')
+            .populate({
+              path: 'participants',
+              populate: {
+                path: 'user',
+                select: 'name imageUrl'
+              }
+            });
+          
+          io.to(`room_${participant.quizRoom}`).emit('participantLeft', updatedRoom);
+        }
+      } catch (error) {
+        console.error('Error handling disconnect:', error);
+      }
     });
 
   })

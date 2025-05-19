@@ -7,7 +7,7 @@ import { Socket } from 'socket.io-client';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { AlarmClockIcon, Tick04Icon, Timer01Icon, TimeSetting01Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import UpdateRoomTimeModal from '../components/UpdateRoomTimeModal';
-import { NavLink } from 'react-router';
+import { NavLink, useNavigate, useLocation } from 'react-router';
 
 const RoomManager = () => {
     const { userId } = useAuth();
@@ -15,6 +15,8 @@ const RoomManager = () => {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
     const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+    const navigate = useNavigate();
+    const location = useLocation();
 
     const [rooms, setRooms] = useState<GroupedRooms>({
         scheduled: [],
@@ -129,6 +131,18 @@ const RoomManager = () => {
         };
     }, [userId, session]);
 
+    // Add effect to handle refresh parameter
+    useEffect(() => {
+        const searchParams = new URLSearchParams(location.search);
+        const refresh = searchParams.get('refresh');
+        if (refresh) {
+            // Remove the refresh parameter from URL
+            navigate(location.pathname, { replace: true });
+            // Fetch rooms again
+            fetchRooms();
+        }
+    }, [location.search]);
+
     const handleCompletedRoom = (room: Room) => {
         if (!socket) {
             console.error('Socket chưa được kết nối');
@@ -147,9 +161,9 @@ const RoomManager = () => {
             console.log('Nhận phản hồi từ server:', response);
             if (response.success) {
                 fetchRooms();
-                console.log('✅ Kết thúc phòng thành công:', response);
+                console.log('Kết thúc phòng thành công:', response);
             } else {
-                console.error('❌ Thất bại:', response.message);
+                console.error('Thất bại:', response.message);
             }
         });
     };
@@ -222,7 +236,10 @@ const RoomManager = () => {
     };
 
     const renderRooms = (status: RoomStatus) => {
-        const list = rooms[status] || [];
+        const [list, setList] = useState(rooms[status] || []);
+        useEffect(() => {
+            setList(rooms[status] || []);
+        }, [rooms]);
         return list.length === 0 ? (
             <p className="text-gray-500 italic">Không có phòng</p>
         ) : (
