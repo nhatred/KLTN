@@ -288,8 +288,16 @@ async function deleteQuiz(req, res) {
 // Save quiz results
 async function saveQuizResults(req, res) {
   try {
-    const { quizId, userAnswers, score, userId, username, totalScore, deviceId } = req.body;
-    
+    const {
+      quizId,
+      userAnswers,
+      score,
+      userId,
+      username,
+      totalScore,
+      deviceId,
+    } = req.body;
+
     console.log("Saving quiz results with data:", {
       quizId,
       userAnswersCount: userAnswers?.length || 0,
@@ -297,25 +305,26 @@ async function saveQuizResults(req, res) {
       userId,
       username,
       totalScore,
-      deviceId
+      deviceId,
     });
-    
+
     if (!quizId || !userAnswers || score === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: quizId, userAnswers, and score are required"
+        message:
+          "Missing required fields: quizId, userAnswers, and score are required",
       });
     }
-    
+
     // Increment the quiz play count
     await Quiz.findByIdAndUpdate(quizId, { $inc: { totalPlays: 1 } });
-    
+
     // Create a participant record
     const participantData = {
       score: score,
-      isLoggedIn: false // Mặc định là false, sẽ set true nếu có userId
+      isLoggedIn: false, // Mặc định là false, sẽ set true nếu có userId
     };
-    
+
     // Xử lý thông tin người dùng
     if (userId && userId !== "undefined" && userId !== "null") {
       // Người dùng đã đăng nhập (có Clerk auth)
@@ -331,23 +340,23 @@ async function saveQuizResults(req, res) {
       console.log("Saving anonymous user");
       participantData.temporaryUsername = "Anonymous";
     }
-    
+
     // Lưu thông tin quiz vào participant
     if (quizId) {
       participantData.quiz = quizId;
     }
-    
+
     // Lưu deviceId nếu có
     if (deviceId) {
       participantData.deviceId = deviceId;
     }
-    
+
     console.log("Creating participant with data:", participantData);
-    
+
     // Tạo participant và liên kết với quiz (không phải quizRoom)
     const participant = await Participant.create(participantData);
     console.log("Created participant:", participant._id);
-    
+
     // Save each answer as a submission with reference to quiz
     const submissions = [];
     for (const answer of userAnswers) {
@@ -356,29 +365,29 @@ async function saveQuizResults(req, res) {
         participant: participant._id,
         question: answer.questionId,
         answer: answer.userAnswer,
-        isCorrect: answer.correct,
+        isCorrect: answer.isCorrect,
         score: answer.score || 0,
-        timeToAnswer: answer.timeToAnswer
+        timeToAnswer: answer.timeToAnswer,
       };
-      
+
       // Thêm reference tới quiz đã chơi
       if (quizId) {
         submissionData.quiz = quizId;
       }
-      
+
       // Thêm reference tới user nếu đã đăng nhập
       if (participantData.isLoggedIn && userId) {
         submissionData.user = userId;
       }
-      
+
       const submission = await Submission.create(submissionData);
       submissions.push(submission._id);
     }
-    
+
     // Update participant with submissions
     participant.submissions = submissions;
     await participant.save();
-    
+
     // Đánh dấu phiên chơi quiz trên server là đã hoàn thành nếu có deviceId
     if (deviceId) {
       try {
@@ -386,19 +395,22 @@ async function saveQuizResults(req, res) {
           {
             quiz: quizId,
             deviceId: deviceId,
-            status: 'active'
+            status: "active",
           },
           {
-            status: 'completed',
-            participant: participant._id
+            status: "completed",
+            participant: participant._id,
           }
         );
       } catch (sessionError) {
-        console.log("No active session found or error updating session:", sessionError);
+        console.log(
+          "No active session found or error updating session:",
+          sessionError
+        );
         // Tiếp tục xử lý bình thường
       }
     }
-    
+
     // Nếu người dùng đã đăng nhập, cập nhật lịch sử tham gia trong User model
     if (participantData.isLoggedIn && userId) {
       try {
@@ -410,34 +422,37 @@ async function saveQuizResults(req, res) {
               participations: participant._id,
               recentlyJoinedQuizzes: {
                 quizId: quizId,
-                joinedAt: new Date()
-              }
-            }
+                joinedAt: new Date(),
+              },
+            },
           },
           { new: true }
         );
-        
+
         if (userUpdate) {
           console.log(`Updated user ${userId} with new participation`);
         } else {
           console.log(`User ${userId} not found in database`);
         }
       } catch (userUpdateError) {
-        console.error("Error updating user with participation:", userUpdateError);
+        console.error(
+          "Error updating user with participation:",
+          userUpdateError
+        );
         // Không return lỗi ở đây - chúng ta vẫn muốn lưu kết quả quiz dù user update fails
       }
     }
-    
+
     res.status(201).json({
       success: true,
       message: "Quiz results saved successfully",
-      participantId: participant._id
+      participantId: participant._id,
     });
   } catch (error) {
     console.error("Error saving quiz results:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to save quiz results: " + error.message
+      message: "Failed to save quiz results: " + error.message,
     });
   }
 }
@@ -446,114 +461,127 @@ async function saveQuizResults(req, res) {
 async function getUserQuizHistory(req, res) {
   try {
     const userId = req.params.userId;
-    
+
     if (!userId) {
       console.log("No userId provided in request");
       return res.status(400).json({
         success: false,
-        message: "User ID is required"
+        message: "User ID is required",
       });
     }
-    
+
     console.log(`Fetching quiz history for user: ${userId}`);
-    
+
     // Kiểm tra xem user có tồn tại không
     const user = await User.findById(userId);
     if (!user) {
       console.log(`User not found with ID: ${userId}`);
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
-    
+
     // Tìm tất cả các lần tham gia của người dùng, sắp xếp theo thời gian mới nhất
-    const participations = await Participant.find({ 
+    const participations = await Participant.find({
       user: userId,
-      isLoggedIn: true
+      isLoggedIn: true,
     })
-    .populate({
-      path: 'quiz',
-      select: '_id name imageUrl difficulty topic totalPlays createdAt',
-      model: 'Quiz'
-    })
-    .sort({ joinedAt: -1 })
-    .lean()
-    .exec();
-    
+      .populate({
+        path: "quiz",
+        select: "_id name imageUrl difficulty topic totalPlays createdAt",
+        model: "Quiz",
+      })
+      .sort({ joinedAt: -1 })
+      .lean()
+      .exec();
+
     console.log(`Found ${participations.length} participations`);
-    
+
     // Tạo thông tin chi tiết hơn cho mỗi lần tham gia
-    const quizHistory = await Promise.all(participations.map(async (participation) => {
-      try {
-        if (!participation.quiz) {
-          console.log(`Skipping participation ${participation._id} - no quiz data`);
+    const quizHistory = await Promise.all(
+      participations.map(async (participation) => {
+        try {
+          if (!participation.quiz) {
+            console.log(
+              `Skipping participation ${participation._id} - no quiz data`
+            );
+            return null;
+          }
+
+          // Lấy danh sách submissions
+          const submissions = await Submission.find({
+            participant: participation._id,
+          })
+            .populate("question", "questionText")
+            .lean()
+            .exec();
+
+          // Tính tỉ lệ đúng/sai
+          const correctAnswers = submissions.filter(
+            (sub) => sub.isCorrect
+          ).length;
+          const totalAnswers = submissions.length;
+          const correctPercentage =
+            totalAnswers > 0
+              ? Math.round((correctAnswers / totalAnswers) * 100)
+              : 0;
+
+          // Lấy thông tin câu hỏi của quiz
+          const quizQuestions = await Question.find({
+            quizId: participation.quiz._id,
+          })
+            .select("_id questionText")
+            .lean()
+            .exec();
+
+          return {
+            participationId: participation._id,
+            quiz: {
+              _id: participation.quiz._id,
+              name: participation.quiz.name,
+              imageUrl: participation.quiz.imageUrl,
+              difficulty: participation.quiz.difficulty,
+              topic: participation.quiz.topic,
+              totalPlays: participation.quiz.totalPlays,
+              createdAt: participation.quiz.createdAt,
+              questions: quizQuestions || [],
+            },
+            score: participation.score || 0,
+            joinedAt: participation.joinedAt || participation.createdAt,
+            stats: {
+              totalQuestions: totalAnswers,
+              correctAnswers,
+              incorrectAnswers: totalAnswers - correctAnswers,
+              correctPercentage,
+            },
+          };
+        } catch (error) {
+          console.error(
+            `Error processing participation ${participation._id}:`,
+            error
+          );
           return null;
         }
+      })
+    );
 
-        // Lấy danh sách submissions
-        const submissions = await Submission.find({
-          participant: participation._id
-        })
-        .populate('question', 'questionText')
-        .lean()
-        .exec();
-        
-        // Tính tỉ lệ đúng/sai
-        const correctAnswers = submissions.filter(sub => sub.isCorrect).length;
-        const totalAnswers = submissions.length;
-        const correctPercentage = totalAnswers > 0 
-          ? Math.round((correctAnswers / totalAnswers) * 100) 
-          : 0;
-
-        // Lấy thông tin câu hỏi của quiz
-        const quizQuestions = await Question.find({ quizId: participation.quiz._id })
-          .select('_id questionText')
-          .lean()
-          .exec();
-        
-        return {
-          participationId: participation._id,
-          quiz: {
-            _id: participation.quiz._id,
-            name: participation.quiz.name,
-            imageUrl: participation.quiz.imageUrl,
-            difficulty: participation.quiz.difficulty,
-            topic: participation.quiz.topic,
-            totalPlays: participation.quiz.totalPlays,
-            createdAt: participation.quiz.createdAt,
-            questions: quizQuestions || []
-          },
-          score: participation.score || 0,
-          joinedAt: participation.joinedAt || participation.createdAt,
-          stats: {
-            totalQuestions: totalAnswers,
-            correctAnswers,
-            incorrectAnswers: totalAnswers - correctAnswers,
-            correctPercentage
-          }
-        };
-      } catch (error) {
-        console.error(`Error processing participation ${participation._id}:`, error);
-        return null;
-      }
-    }));
-    
     // Lọc bỏ các kết quả null
-    const validQuizHistory = quizHistory.filter(history => history !== null);
-    
-    console.log(`Successfully processed ${validQuizHistory.length} quiz histories`);
-    
+    const validQuizHistory = quizHistory.filter((history) => history !== null);
+
+    console.log(
+      `Successfully processed ${validQuizHistory.length} quiz histories`
+    );
+
     res.status(200).json({
       success: true,
-      data: validQuizHistory
+      data: validQuizHistory,
     });
-    
   } catch (error) {
     console.error("Error fetching user quiz history:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch user quiz history: " + error.message
+      message: "Failed to fetch user quiz history: " + error.message,
     });
   }
 }
@@ -563,53 +591,55 @@ async function saveQuizSession(req, res) {
   try {
     const { quizId, quizState, userAnswers, timeLeft, deviceId } = req.body;
     const userId = req.body.userId || null;
-    
+
     if (!quizId || !deviceId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: quizId and deviceId are required"
+        message: "Missing required fields: quizId and deviceId are required",
       });
     }
-    
-    console.log(`Saving quiz session for quizId: ${quizId}, deviceId: ${deviceId}`);
-    
+
+    console.log(
+      `Saving quiz session for quizId: ${quizId}, deviceId: ${deviceId}`
+    );
+
     // Kiểm tra nếu quizId là MongoDB ObjectId hợp lệ
     if (!mongoose.isValidObjectId(quizId)) {
       console.log(`Invalid ObjectId format for quizId: ${quizId}`);
       return res.status(400).json({
         success: false,
-        message: "Invalid quiz ID format"
+        message: "Invalid quiz ID format",
       });
     }
-    
+
     // Tìm phiên chơi quiz hiện tại nếu có
     let session = await QuizSession.findOne({
       quiz: quizId,
       deviceId: deviceId,
-      status: 'active'
+      status: "active",
     });
-    
+
     // Cập nhật phiên chơi nếu tồn tại, nếu không tạo mới
     if (session) {
       console.log(`Updating existing session: ${session._id}`);
-      
+
       session.currentQuestion = quizState.currentQuestion;
       session.timeLeft = timeLeft;
       session.score = quizState.score;
       session.userAnswers = userAnswers;
       session.updatedAt = new Date();
       session.expiresAt = new Date(Date.now() + 30 * 60 * 1000); // Gia hạn thêm 30 phút
-      
+
       await session.save();
-      
+
       res.status(200).json({
         success: true,
         message: "Quiz session updated",
-        sessionId: session._id
+        sessionId: session._id,
       });
     } else {
       console.log(`Creating new session for quiz ${quizId}`);
-      
+
       // Tạo phiên chơi mới
       const sessionData = {
         quiz: quizId,
@@ -618,9 +648,9 @@ async function saveQuizSession(req, res) {
         timeLeft: timeLeft,
         score: quizState.score,
         userAnswers: userAnswers,
-        status: 'active'
+        status: "active",
       };
-      
+
       // Thêm thông tin người dùng nếu đã đăng nhập
       if (userId) {
         sessionData.user = userId;
@@ -629,21 +659,21 @@ async function saveQuizSession(req, res) {
         sessionData.temporaryUsername = req.body.username;
         sessionData.isLoggedIn = false;
       }
-      
+
       const newSession = await QuizSession.create(sessionData);
       console.log(`Created new session: ${newSession._id}`);
-      
+
       res.status(201).json({
         success: true,
         message: "Quiz session created",
-        sessionId: newSession._id
+        sessionId: newSession._id,
       });
     }
   } catch (error) {
     console.error("Error saving quiz session:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to save quiz session: " + error.message
+      message: "Failed to save quiz session: " + error.message,
     });
   }
 }
@@ -652,46 +682,48 @@ async function saveQuizSession(req, res) {
 async function getQuizSession(req, res) {
   try {
     const { quizId, deviceId } = req.query;
-    
+
     if (!quizId || !deviceId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required query parameters: quizId and deviceId"
+        message: "Missing required query parameters: quizId and deviceId",
       });
     }
-    
-    console.log(`Fetching quiz session for quizId: ${quizId}, deviceId: ${deviceId}`);
-    
+
+    console.log(
+      `Fetching quiz session for quizId: ${quizId}, deviceId: ${deviceId}`
+    );
+
     // Kiểm tra nếu quizId là MongoDB ObjectId hợp lệ
-    let query = { deviceId, status: 'active' };
-    
+    let query = { deviceId, status: "active" };
+
     if (mongoose.isValidObjectId(quizId)) {
       query.quiz = quizId;
     } else {
       console.log(`Invalid ObjectId format for quizId: ${quizId}`);
       return res.status(404).json({
         success: false,
-        message: "No active quiz session found (invalid quiz ID)"
+        message: "No active quiz session found (invalid quiz ID)",
       });
     }
-    
+
     // Tìm phiên chơi quiz hiện tại
     const session = await QuizSession.findOne(query);
-    
+
     if (!session) {
-      console.log('No active session found with the provided parameters');
+      console.log("No active session found with the provided parameters");
       return res.status(404).json({
         success: false,
-        message: "No active quiz session found"
+        message: "No active quiz session found",
       });
     }
-    
+
     // Cập nhật thời gian hết hạn
     session.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await session.save();
-    
+
     console.log(`Found and returning active session: ${session._id}`);
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -700,17 +732,17 @@ async function getQuizSession(req, res) {
           showQuiz: true,
           showResults: false,
           currentQuestion: session.currentQuestion,
-          score: session.score
+          score: session.score,
         },
         userAnswers: session.userAnswers,
-        timeLeft: session.timeLeft
-      }
+        timeLeft: session.timeLeft,
+      },
     });
   } catch (error) {
     console.error("Error getting quiz session:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to get quiz session: " + error.message
+      message: "Failed to get quiz session: " + error.message,
     });
   }
 }
@@ -718,64 +750,64 @@ async function getQuizSession(req, res) {
 // Đánh dấu phiên chơi đã hoàn thành
 async function completeQuizSession(req, res) {
   try {
-    console.log('completeQuizSession called with body:', req.body);
-    
+    console.log("completeQuizSession called with body:", req.body);
+
     const { quizId, deviceId } = req.body;
-    
+
     if (!quizId || !deviceId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: quizId and deviceId"
+        message: "Missing required fields: quizId and deviceId",
       });
     }
-    
+
     // Kiểm tra nếu quizId là MongoDB ObjectId hợp lệ
     if (!mongoose.isValidObjectId(quizId)) {
       console.log(`Invalid ObjectId format for quizId: ${quizId}`);
       return res.status(400).json({
         success: false,
-        message: "Invalid quiz ID format"
+        message: "Invalid quiz ID format",
       });
     }
 
-    console.log('Searching for session with query:', {
+    console.log("Searching for session with query:", {
       quiz: quizId,
       deviceId: deviceId,
-      status: 'active'
+      status: "active",
     });
-    
+
     // Tìm phiên chơi quiz hiện tại
     const session = await QuizSession.findOne({
       quiz: quizId,
       deviceId: deviceId,
-      status: 'active'
+      status: "active",
     });
 
-    console.log('Found session:', session);
-    
+    console.log("Found session:", session);
+
     if (!session) {
-      console.log('No active session found with the provided parameters');
+      console.log("No active session found with the provided parameters");
       return res.status(404).json({
         success: false,
-        message: "No active quiz session found"
+        message: "No active quiz session found",
       });
     }
 
     // Cập nhật trạng thái phiên chơi
-    session.status = 'completed';
+    session.status = "completed";
     await session.save();
-    
-    console.log('Session marked as completed:', session._id);
-    
+
+    console.log("Session marked as completed:", session._id);
+
     res.status(200).json({
       success: true,
-      message: "Quiz session marked as completed"
+      message: "Quiz session marked as completed",
     });
   } catch (error) {
     console.error("Error completing quiz session:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to complete quiz session: " + error.message
+      message: "Failed to complete quiz session: " + error.message,
     });
   }
 }
@@ -792,5 +824,5 @@ export {
   getUserQuizHistory,
   saveQuizSession,
   getQuizSession,
-  completeQuizSession
+  completeQuizSession,
 };

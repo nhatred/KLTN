@@ -14,6 +14,7 @@ import CreateRoom from "./CreateRoom";
 import JoinRoom from "./JoinRoom";
 import RoomManager from "./RoomManager";
 import JoinRoomForStudent from "./JoinRoomForStudent";
+import ExamBank from "./ExamBank";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -74,6 +75,10 @@ const router = createBrowserRouter([
   {
     path: "/room-manager",
     Component: RoomManager,
+  },
+  {
+    path: "/exam-bank",
+    Component: ExamBank,
   },
 ]);
 

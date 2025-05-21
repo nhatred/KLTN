@@ -16,6 +16,7 @@ import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
 import RoomManager from "./pages/RoomManager";
 import JoinRoomForStudent from "./pages/JoinRoomForStudent";
+import ExamBank from "./pages/ExamBank";
 function App() {
   return (
     <BrowserRouter>
@@ -32,6 +33,7 @@ function App() {
               <Route path="liked-quizzes" element={<LikedQuizzes />} />
             </Route>
             <Route path="room-manager" element={<RoomManager />} />
+            <Route path="exam-bank" element={<ExamBank />} />
           </Route>
           <Route path="/create-quiz" element={<CreateQuiz />} />
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
@@ -39,6 +41,7 @@ function App() {
           <Route path="/create-room/:id" element={<CreateRoom />} />
           <Route path="/join-room/:id" element={<JoinRoom />} />
           <Route path="/join-room/code/:code" element={<JoinRoomForStudent />} />
+          
         </Routes>
       </QuizProvider>
     </BrowserRouter>

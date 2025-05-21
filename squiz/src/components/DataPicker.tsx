@@ -1,31 +1,31 @@
-import { useState, useEffect } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Calendar03Icon, Clock01Icon } from '@hugeicons/core-free-icons';
+import { useState, useEffect } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 
 interface DataPickerProps {
   onDateTimeChange: (dateTime: string) => void;
 }
 
 export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  
+
   // Khởi tạo với thời gian hiện tại của Việt Nam
   const getCurrentVietnamTime = () => {
     const now = new Date();
-    const vnTime = new Date(now.getTime() + (7 * 60 * 60 * 1000)); // Thêm 7 giờ cho múi giờ Việt Nam
+    const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000); // Thêm 7 giờ cho múi giờ Việt Nam
     return vnTime.toISOString().slice(0, 16);
   };
 
   const [roomSettings, setRoomSettings] = useState({
-    startTime: getCurrentVietnamTime()
+    startTime: getCurrentVietnamTime(),
   });
 
   // Format date theo định dạng Việt Nam
   const formatDateToVN = (dateString: string) => {
-    const [year, month, day] = dateString.split('-');
+    const [year, month, day] = dateString.split("-");
     return `${day}/${month}/${year}`;
   };
 
@@ -39,29 +39,32 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
     if (roomSettings.startTime) {
       const dateTime = new Date(roomSettings.startTime);
       // Chuyển đổi sang múi giờ Việt Nam
-      const vnDateTime = new Date(dateTime.getTime() + (7 * 60 * 60 * 1000));
-      setDate(vnDateTime.toISOString().split('T')[0]);
-      setTime(vnDateTime.toISOString().split('T')[1].substring(0, 5));
+      const vnDateTime = new Date(dateTime.getTime() + 7 * 60 * 60 * 1000);
+      setDate(vnDateTime.toISOString().split("T")[0]);
+      setTime(vnDateTime.toISOString().split("T")[1].substring(0, 5));
       onDateTimeChange(roomSettings.startTime);
     }
   }, []);
 
   const handleDateChange = (e: any) => {
     setDate(e.target.value);
-    const newDateTime = `${e.target.value}T${time || '00:00'}`;
+    const newDateTime = `${e.target.value}T${time || "00:00"}`;
     setRoomSettings({
       ...roomSettings,
-      startTime: newDateTime
+      startTime: newDateTime,
     });
+    console.log(newDateTime);
     onDateTimeChange(newDateTime);
   };
 
   const handleTimeChange = (e: any) => {
     setTime(e.target.value);
-    const newDateTime = `${date || getCurrentVietnamTime().split('T')[0]}T${e.target.value}`;
+    const newDateTime = `${date || getCurrentVietnamTime().split("T")[0]}T${
+      e.target.value
+    }`;
     setRoomSettings({
       ...roomSettings,
-      startTime: newDateTime
+      startTime: newDateTime,
     });
     onDateTimeChange(newDateTime);
   };
@@ -85,31 +88,35 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
             <div className="w-full relative flex rounded-lg overflow-hidden border border-gray-200">
               <input
                 type="text"
-                value={`${date && time ? `${formatDateToVN(date)} ${formatTimeTo24h(time)}` : ''}`}
+                value={`${
+                  date && time
+                    ? `${formatDateToVN(date)} ${formatTimeTo24h(time)}`
+                    : ""
+                }`}
                 placeholder="Chọn ngày và giờ"
                 readOnly
                 className="w-full p-3 outline-none"
               />
-              
+
               <div className="flex border-l border-gray-300">
-                <button 
+                <button
                   type="button"
                   onClick={toggleDatePicker}
                   className="p-3 hover:bg-orange-50 transition-all"
                 >
                   <HugeiconsIcon icon={Calendar03Icon} />
                 </button>
-                
-                <button 
-                    type="button"
-                    onClick={toggleTimePicker}
-                    className="p-3 hover:bg-orange-50 transition-all"
-                    >
-                    <HugeiconsIcon icon={Clock01Icon} />
-                    </button>
+
+                <button
+                  type="button"
+                  onClick={toggleTimePicker}
+                  className="p-3 hover:bg-orange-50 transition-all"
+                >
+                  <HugeiconsIcon icon={Clock01Icon} />
+                </button>
               </div>
             </div>
-            
+
             {/* Input datetime-local ẩn để lưu giá trị */}
             <input
               type="datetime-local"
@@ -118,19 +125,21 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
               onChange={(e) => {
                 setRoomSettings({
                   ...roomSettings,
-                  startTime: e.target.value
+                  startTime: e.target.value,
                 });
                 onDateTimeChange(e.target.value);
               }}
               className="hidden"
             />
           </div>
-          
+
           {/* Date Picker */}
           {showDatePicker && (
             <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg z-10">
               <div className="p-3">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Chọn ngày</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">
+                  Chọn ngày
+                </h3>
                 <input
                   type="date"
                   value={date}
@@ -139,7 +148,7 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
                 />
               </div>
               <div className="flex justify-end px-3 pb-3 rounded-b-lg">
-                <button 
+                <button
                   onClick={() => setShowDatePicker(false)}
                   className="px-3 py-2 bg-orange text-white text-sm rounded btn-hover"
                 >
@@ -148,12 +157,14 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
               </div>
             </div>
           )}
-          
+
           {/* Time Picker */}
           {showTimePicker && (
             <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-10">
               <div className="p-3">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Chọn giờ</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">
+                  Chọn giờ
+                </h3>
                 <input
                   type="time"
                   value={time}
@@ -162,7 +173,7 @@ export default function DataPicker({ onDateTimeChange }: DataPickerProps) {
                 />
               </div>
               <div className="flex justify-end px-3 pb-3 rounded-b-lg">
-                <button 
+                <button
                   onClick={() => setShowTimePicker(false)}
                   className="px-3 py-2 bg-orange text-white text-sm rounded btn-hover"
                 >

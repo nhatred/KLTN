@@ -9,6 +9,7 @@ import {
   SearchAreaIcon,
   Add01Icon,
   AirplayLineIcon,
+  Book01Icon,
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import SelectQuizModal from "./SelectQuizModal";
@@ -136,6 +137,20 @@ export default function Navbar() {
             >
               <HugeiconsIcon icon={AirplayLineIcon} />
               <p>Quản lý phòng thi</p>
+            </NavLink>
+          )}
+
+          {user && (
+            <NavLink
+              to="/dashboard/exam-bank/"
+              className={({ isActive }) =>
+                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                  isActive ? "btn-active text-orange" : ""
+                }`
+              }
+            >
+              <HugeiconsIcon icon={Book01Icon} />
+              <p>Ngân hàng đề thi</p>
             </NavLink>
           )}
         </div>
