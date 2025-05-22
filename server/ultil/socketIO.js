@@ -25,7 +25,7 @@ const setupQuizSocket = (io) => {
       const result = await joinRoom(socket, data);
       console.log("JoinRoom result:", result);
 
-      if (result.success) {
+      if (result.success && result.participant) {
         socket.join(`room_${result.participant.quizRoom}`);
         socket.join(`participant_${result.participant._id}`);
 
@@ -34,31 +34,43 @@ const setupQuizSocket = (io) => {
           success: result.success,
           participant: result.participant,
           questions: {
-            remaining: result.remainingQuestions,
-            answered: result.answeredQuestions,
+            remaining: result.remainingQuestions || [],
+            answered: result.answeredQuestions || [],
           },
-          endTime: result.endTime,
-          timeRemaining: result.timeRemaining,
-          progress: result.progress,
+          progress: result.progress || {
+            answered: 0,
+            total: result.participant.questionOrder?.length || 0,
+          },
         });
 
         // Thông báo cho tất cả người dùng trong phòng về người tham gia mới
-        const updatedRoom = await QuizRoom.findById(result.participant.quizRoom)
-          .populate("participants")
-          .populate({
-            path: "participants",
-            populate: {
-              path: "user",
-              select: "name imageUrl",
-            },
-          });
+        try {
+          const updatedRoom = await QuizRoom.findById(
+            result.participant.quizRoom
+          )
+            .populate("participants")
+            .populate({
+              path: "participants",
+              populate: {
+                path: "user",
+                select: "name imageUrl",
+              },
+            });
 
-        io.to(`room_${result.participant.quizRoom}`).emit(
-          "participantJoined",
-          updatedRoom
-        );
+          if (updatedRoom) {
+            io.to(`room_${result.participant.quizRoom}`).emit(
+              "participantJoined",
+              updatedRoom
+            );
+          }
+        } catch (error) {
+          console.error("Error updating room participants:", error);
+        }
       } else {
-        callback(result);
+        callback({
+          success: false,
+          message: result.message || "Không thể tham gia phòng",
+        });
       }
     });
 

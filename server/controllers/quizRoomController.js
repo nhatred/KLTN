@@ -6,41 +6,43 @@ import QuizRoom from "../models/QuizRoom.js";
 import mongoose from "mongoose";
 import generateRoomCode from "../ultil/roomUtils.js";
 import Quiz from "../models/Quiz.js";
+import ExamSet from "../models/ExamSet.js";
 
 // Tạo phòng thi mới
 async function createRoom(req, res) {
   try {
-    const { quizId, durationMinutes, startTime, roomName } = req.body;
+    const { examSetId, sections, durationMinutes, startTime, roomName } =
+      req.body;
     const hostId = req.userId;
 
     console.log("Create Room Debug:", {
-      quizId,
+      examSetId,
       hostId,
       auth: req.auth,
       userId: req.userId,
     });
 
     // Validate input
-    if (!quizId || !durationMinutes) {
+    if (!examSetId || !durationMinutes) {
       return res.status(400).json({
         success: false,
-        message: "Thiếu thông tin bắt buộc: quizId và durationMinutes",
+        message: "Thiếu thông tin bắt buộc: examSetId và durationMinutes",
       });
     }
 
     // Kiểm tra quiz tồn tại và thuộc về host (sử dụng lean() để tối ưu)
-    const quiz = await Quiz.findById(quizId).lean();
-    if (!quiz) {
+    const examSet = await ExamSet.findById(examSetId).lean();
+    if (!examSet) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy quiz",
+        message: "Không tìm thấy đề thi",
       });
     }
 
     console.log("Quiz Debug:", {
-      quizCreator: quiz.creator,
+      quizCreator: examSet.createdBy,
       hostId,
-      comparison: quiz.creator.toString() === hostId,
+      comparison: examSet.createdBy.toString() === hostId,
     });
 
     // Xử lý thời gian
@@ -59,7 +61,7 @@ async function createRoom(req, res) {
     const newRoom = new QuizRoom({
       roomCode,
       roomName,
-      quiz: quizId,
+      examSetId,
       host: hostId,
       durationMinutes,
       autoStart: !!parsedStartTime, // Tự động kích hoạt nếu có startTime
@@ -259,7 +261,7 @@ async function getRoomById(req, res) {
     }
 
     const room = await QuizRoom.findById(req.params.id)
-      .populate("quiz")
+      .populate("examSetId")
       .populate("host")
       .populate({
         path: "participants",
@@ -276,9 +278,16 @@ async function getRoomById(req, res) {
         message: "Không tìm thấy phòng thi",
       });
     }
+
+    // Transform the response to maintain backward compatibility
+    const responseData = {
+      ...room.toObject(),
+      quiz: room.examSetId, // Map examSetId to quiz for backward compatibility
+    };
+
     res.json({
       success: true,
-      data: room,
+      data: responseData,
     });
   } catch (error) {
     res.status(500).json({
@@ -759,6 +768,166 @@ async function _calculateQuestionStats(submissions, questions) {
 
   return stats;
 }
+
+export const createQuizRoom = async (req, res) => {
+  try {
+    const {
+      examSetId,
+      sections,
+      durationMinutes,
+      startTime,
+      startNow,
+      shuffleQuestions,
+      shuffleAnswers,
+      timeMode,
+      timePerQuestion,
+    } = req.body;
+
+    // Validate required fields
+    if (!examSetId || !sections || !durationMinutes) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin bắt buộc",
+      });
+    }
+
+    // Get exam set and validate
+    const examSet = await ExamSet.findById(examSetId).populate("questions");
+    if (!examSet) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đề thi",
+      });
+    }
+
+    // Group questions by difficulty
+    const questionsByDifficulty = {
+      easy: examSet.questions.filter((q) => q.difficulty === "easy"),
+      medium: examSet.questions.filter((q) => q.difficulty === "medium"),
+      hard: examSet.questions.filter((q) => q.difficulty === "hard"),
+    };
+
+    // Validate if we have enough questions for each section
+    for (const section of sections) {
+      const availableQuestions =
+        questionsByDifficulty[section.difficulty].length;
+      if (section.numberOfQuestions > availableQuestions) {
+        return res.status(400).json({
+          success: false,
+          message: `Không đủ câu hỏi cho mức độ ${section.difficulty}. Yêu cầu: ${section.numberOfQuestions}, Hiện có: ${availableQuestions}`,
+        });
+      }
+    }
+
+    // Select random questions for each section
+    let selectedQuestions = [];
+    for (const section of sections) {
+      const questions = questionsByDifficulty[section.difficulty];
+      const shuffled = [...questions].sort(() => 0.5 - Math.random());
+      selectedQuestions = [
+        ...selectedQuestions,
+        ...shuffled.slice(0, section.numberOfQuestions),
+      ];
+    }
+
+    // Create quiz room
+    const quizRoom = new QuizRoom({
+      examSetId,
+      sections,
+      questions: selectedQuestions.map((q) => q._id),
+      createdBy: req.auth.userId,
+      durationMinutes,
+      startTime: startTime || (startNow ? new Date() : null),
+      startNow,
+      shuffleQuestions,
+      shuffleAnswers,
+      timeMode,
+      timePerQuestion,
+      status: startNow ? "active" : "waiting",
+    });
+
+    await quizRoom.save();
+
+    // Populate questions for response
+    await quizRoom.populate("questions");
+
+    res.status(201).json({
+      success: true,
+      message: "Tạo phòng thi thành công",
+      data: quizRoom,
+    });
+  } catch (error) {
+    console.error("Error creating quiz room:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi tạo phòng thi",
+      error: error.message,
+    });
+  }
+};
+
+export const getQuizRoom = async (req, res) => {
+  try {
+    const quizRoom = await QuizRoom.findById(req.params.id)
+      .populate("examSetId")
+      .populate("questions");
+
+    if (!quizRoom) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phòng thi",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: quizRoom,
+    });
+  } catch (error) {
+    console.error("Error getting quiz room:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy thông tin phòng thi",
+      error: error.message,
+    });
+  }
+};
+
+export const updateQuizRoomStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const quizRoom = await QuizRoom.findById(req.params.id);
+
+    if (!quizRoom) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phòng thi",
+      });
+    }
+
+    quizRoom.status = status;
+    if (status === "active") {
+      quizRoom.startTime = new Date();
+    } else if (status === "completed") {
+      quizRoom.endTime = new Date();
+    }
+
+    await quizRoom.save();
+
+    res.json({
+      success: true,
+      message: "Cập nhật trạng thái phòng thi thành công",
+      data: quizRoom,
+    });
+  } catch (error) {
+    console.error("Error updating quiz room status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi cập nhật trạng thái phòng thi",
+      error: error.message,
+    });
+  }
+};
 
 export {
   createRoom,

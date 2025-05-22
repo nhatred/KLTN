@@ -268,7 +268,9 @@ const RoomManager = () => {
             className="p-3 bg-white rounded shadow flex justify-between items-center"
           >
             <div>
-              <div className="mb-2 font-semibold">{room.quiz.name}</div>
+              <div className="mb-2 font-semibold">
+                {room.quiz?.name || room.roomName || "Phòng thi chưa có tên"}
+              </div>
               <div className="text-sm text-gray-500">Mã: {room.roomCode}</div>
               <div className="text-sm text-gray-500">
                 Bắt đầu lúc:{" "}

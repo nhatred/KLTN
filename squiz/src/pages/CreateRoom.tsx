@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   AlarmClockIcon,
   Backward01Icon,
@@ -16,12 +16,20 @@ import "../style/checkbox2.css";
 import DataPicker from "../components/DataPicker";
 import { Quiz } from "../types/Quiz";
 import { useAuth } from "@clerk/clerk-react";
+import axios from "axios";
+
+interface Section {
+  difficulty: "easy" | "medium" | "hard";
+  numberOfQuestions: number;
+}
 
 export default function CreateRoom() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { getToken } = useAuth();
-  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [examSet, setExamSet] = useState<any>(null);
+  const [sections, setSections] = useState<Section[]>([]);
   const [roomSettings, setRoomSettings] = useState({
     startTime: "",
     shuffleAnswers: true,
@@ -33,6 +41,19 @@ export default function CreateRoom() {
     startNow: false,
   });
 
+  useEffect(() => {
+    // Lấy sections từ URL params
+    const sectionsParam = searchParams.get("sections");
+    if (sectionsParam) {
+      try {
+        const parsedSections = JSON.parse(sectionsParam);
+        setSections(parsedSections);
+      } catch (error) {
+        console.error("Error parsing sections:", error);
+      }
+    }
+  }, [searchParams]);
+
   const handleSettingChange = (e: any) => {
     const { name, value, type } = e.target;
     setRoomSettings((prev) => ({
@@ -42,81 +63,113 @@ export default function CreateRoom() {
   };
 
   const handleDateTimeChange = (dateTime: string) => {
-    console.log("Daaaaaa", dateTime);
     setRoomSettings((prev) => ({
       ...prev,
       startTime: dateTime,
     }));
   };
 
-  console.log(id);
-
-  const getQuiz = async () => {
-    const response = await fetch(`http://localhost:5000/api/quiz/${id}`);
-    const data = await response.json();
-    setQuiz(data.data);
+  const getExamSet = async () => {
+    try {
+      const token = await getToken();
+      const response = await axios.get(
+        `http://localhost:5000/api/examSets/${id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      setExamSet(response.data);
+    } catch (error) {
+      console.error("Error fetching exam set:", error);
+    }
   };
 
   useEffect(() => {
-    getQuiz();
-  }, []);
-
-  useEffect(() => {
-    console.log("Room settings:", roomSettings);
-  }, [roomSettings]);
+    getExamSet();
+  }, [id]);
 
   const handleCreateRoom = async () => {
     const token = await getToken();
-    console.log("Room settings:", roomSettings);
-    const response = await fetch(`http://localhost:5000/api/quizRoom`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        quizId: id,
+    try {
+      const requestBody = {
+        examSetId: id,
         durationMinutes: roomSettings.totalTime,
-        startTime: roomSettings.startTime,
-        startNow: roomSettings.startNow,
-      }),
-    });
-    const data = await response.json();
-    if (!data.success) {
-      console.error("Error creating room:", data.message);
-      return;
+        startTime: roomSettings.startNow
+          ? new Date().toISOString()
+          : roomSettings.startTime,
+        sections: sections,
+        roomName: examSet?.name || "Phòng thi mới",
+      };
+
+      console.log("Sending request with body:", requestBody);
+
+      const response = await fetch(`http://localhost:5000/api/quizRoom`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      console.log("Server response:", data);
+
+      if (!response.ok) {
+        console.error("Server error:", data);
+        alert(data.message || "Có lỗi xảy ra khi tạo phòng thi");
+        return;
+      }
+
+      if (!data.success) {
+        console.error("Operation failed:", data.message);
+        alert(data.message || "Có lỗi xảy ra khi tạo phòng thi");
+        return;
+      }
+
+      navigate(`/dashboard/room-manager?refresh=${Date.now()}`);
+    } catch (error) {
+      console.error("Error creating room:", error);
+      alert("Có lỗi xảy ra khi tạo phòng thi");
     }
-    console.log("Room created successfully:", data.data);
-    // Navigate to RoomManager with a timestamp to force refresh
-    navigate(`/dashboard/room-manager?refresh=${Date.now()}`);
   };
 
   const handleCreateRoomLive = async () => {
     const token = await getToken();
-    const response = await fetch(`http://localhost:5000/api/quizRoom`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        quizId: id,
-        durationMinutes: roomSettings.totalTime,
-        startTime: roomSettings.startTime,
-        startNow: roomSettings.startNow,
-      }),
-    });
-    const data = await response.json();
-    if (!data.success) {
-      console.error("Error creating room:", data.message);
-      return;
+    try {
+      const response = await axios.post(
+        "http://localhost:5000/api/quizRooms",
+        {
+          examSetId: id,
+          sections,
+          durationMinutes: roomSettings.totalTime,
+          startTime: roomSettings.startTime,
+          startNow: true, // Luôn bắt đầu ngay cho chế độ trực tiếp
+          shuffleAnswers: roomSettings.shuffleAnswers,
+          shuffleQuestions: roomSettings.shuffleQuestions,
+          timeMode: roomSettings.timeMode,
+          timePerQuestion: roomSettings.timePerQuestion,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        navigate(`/join-room/${response.data.data._id}`);
+      } else {
+        alert(response.data.message || "Có lỗi xảy ra khi tạo phòng thi");
+      }
+    } catch (error) {
+      console.error("Error creating room:", error);
+      alert("Có lỗi xảy ra khi tạo phòng thi");
     }
-    console.log("Room created successfully:", data);
-    if (data.success) {
-      navigate(`/join-room/${data.data._id}`);
-    }
-    // Navigate to RoomManager with a timestamp to force refresh
   };
+
   return (
     <div className="bg-background h-screen">
       <nav className="h-16 fixed left-0 right-0 border-b-1 z-10 bg-background py-2 px-4 flex justify-between items-center">
@@ -133,11 +186,17 @@ export default function CreateRoom() {
           <p className="text-gray-500 text-lg font-bold">|</p>
           <div className="flex items-center gap-2">
             <HugeiconsIcon icon={Quiz01Icon} />
-            <p className="font-semibold">{quiz?.name}</p>
+            <p className="font-semibold">{examSet?.name}</p>
           </div>
           <div className="flex items-center gap-2">
             <HugeiconsIcon icon={HelpSquareIcon} />
-            <p className="font-semibold">{quiz?.questions.length} câu hỏi</p>
+            <p className="font-semibold">
+              {sections.reduce(
+                (sum, section) => sum + section.numberOfQuestions,
+                0
+              )}{" "}
+              câu hỏi
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -190,6 +190,16 @@ export default function JoinRoomForStudent() {
 
       const data = await response.json();
       if (data.success) {
+        console.log("Room data received:", {
+          room: data.data,
+          participants: data.data.participants,
+          participantsDetails: data.data.participants.map((p: any) => ({
+            id: p._id,
+            user: p.user,
+            name: p?.user?.name,
+            imageUrl: p?.user?.imageUrl,
+          })),
+        });
         setRoom(data.data);
         if (data.data.quiz?._id) {
           const quizResponse = await fetch(
@@ -1390,8 +1400,8 @@ export default function JoinRoomForStudent() {
   // Extracted component for quiz results modal
   if (submitted && quizResults) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
-        <div className="bg-gradient-to-b from-indigo-950 to-blue-950 rounded-3xl p-8 max-w-4xl w-full mx-4 shadow-2xl transform transition-all border border-indigo-800/60">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background">
+        <div className="bg-black/50 backdrop-blur-sm rounded-3xl p-8 max-w-4xl w-full mx-4 shadow-2xl transform transition-all">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-4xl font-bold text-white">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
@@ -1404,44 +1414,33 @@ export default function JoinRoomForStudent() {
 
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-indigo-900/50 p-6 rounded-xl border border-indigo-700/40 shadow-lg hover:shadow-indigo-900/20 transition-all">
+            <div className="bg-rgba p-6 rounded-xl shadow-lg hover:shadow-indigo-900/20 transition-all">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-cyan-200 font-medium">Điểm số</p>
+                <p className="text-background font-medium">Điểm số</p>
                 <HugeiconsIcon icon={Chart02Icon} />
               </div>
-              <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-400">
-                {quizResults.score}/10
+              <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange to-red-wine">
+                {quizResults.score}/{quizResults.stats.totalQuestions}
               </p>
             </div>
 
-            <div className="bg-indigo-900/50 p-6 rounded-xl border border-indigo-700/40 shadow-lg hover:shadow-indigo-900/20 transition-all">
+            <div className="bg-rgba col-span-2 p-6 rounded-xl transition-all">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-cyan-200 font-medium">Tỷ lệ đúng</p>
-                <div className="bg-gradient-to-r from-cyan-400 to-purple-400 text-indigo-950 text-xs font-bold px-2 py-1 rounded-full">
+                <p className="text-background font-medium">Tỷ lệ đúng</p>
+                <div className="bg-orange text-darkblue text-xs font-bold px-2 py-1 rounded-full">
                   {quizResults.stats.correctPercentage}%
                 </div>
               </div>
-              <div className="w-full bg-indigo-950 rounded-full h-3 mt-2">
+              <div className="w-full bg-gray-500 rounded-full h-3 mt-2">
                 <div
-                  className="bg-gradient-to-r from-cyan-400 to-purple-500 h-3 rounded-full"
+                  className="bg-gradient-to-r from-orange to-red-wine h-3 rounded-full"
                   style={{ width: `${quizResults.stats.correctPercentage}%` }}
                 />
               </div>
-            </div>
-
-            <div className="bg-indigo-900/50 p-6 rounded-xl border border-indigo-700/40 shadow-lg hover:shadow-indigo-900/20 transition-all">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-cyan-200 font-medium">Thời gian</p>
-                <div className="bg-gradient-to-r from-blue-400 to-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-                  {quizResults.stats.timeSpent}
-                </div>
-              </div>
-              <div className="flex items-center">
-                <p className="text-xl font-medium text-cyan-100">
-                  {quizResults.stats.totalCorrect}/
-                  {quizResults.stats.totalQuestions} câu đúng
-                </p>
-              </div>
+              <p className="text-xl font-medium text-orange mt-2">
+                {quizResults.stats.correctAnswers}/
+                {quizResults.stats.totalQuestions} câu đúng
+              </p>
             </div>
           </div>
 
@@ -1449,13 +1448,13 @@ export default function JoinRoomForStudent() {
           <div className="mb-8">
             <button
               onClick={() => setShowDetails(!showDetails)}
-              className="flex items-center justify-between w-full py-4 px-6 bg-indigo-900/50 rounded-xl border border-indigo-700/40 hover:bg-indigo-800/50 transition-colors mb-4"
+              className="flex items-center justify-between w-full py-4 px-6 bg-rgba rounded-xl transition mb-4"
             >
               <div className="flex items-center">
-                <h3 className="text-xl font-semibold text-cyan-100">
+                <h3 className="text-xl font-semibold text-background">
                   Chi tiết câu trả lời
                 </h3>
-                <span className="ml-3 bg-indigo-800/70 px-2 py-1 rounded-lg text-sm text-cyan-200">
+                <span className="ml-3 bg-background px-2 py-1 rounded-lg text-sm text-darkblue">
                   {quizResults.answers.length} câu hỏi
                 </span>
               </div>
@@ -1467,7 +1466,7 @@ export default function JoinRoomForStudent() {
             </button>
 
             {showDetails && (
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar transition-all">
                 {quizResults.answers.map((answer, index) => (
                   <div
                     key={index}
@@ -1530,18 +1529,18 @@ export default function JoinRoomForStudent() {
           {/* Action Buttons */}
           <div className="flex justify-between">
             <button
-              onClick={() => navigate("/dashboard")}
-              className="flex items-center px-5 py-3 bg-indigo-900/60 text-cyan-100 rounded-xl font-medium hover:bg-indigo-800 transition-colors border border-indigo-700/40"
+              onClick={() => navigate("/dashboard/home")}
+              className="flex items-center px-5 py-3 bg-background text-darkblue rounded-xl font-medium btn-hover"
             >
               <HugeiconsIcon icon={Backward01Icon} />
-              Quay lại trang chủ
+              <span className="ml-2">Quay lại trang chủ</span>
             </button>
 
             <button
-              onClick={() => console.log("Share results")}
-              className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-semibold hover:opacity-90 transition-colors shadow-lg shadow-indigo-900/30"
+              onClick={() => navigate("/dashboard/activity")}
+              className="px-6 py-3  bg-orange text-darkblue rounded-xl font-semibold btn-hover"
             >
-              Làm lại bài thi
+              Đến trang hoạt động
             </button>
           </div>
         </div>
@@ -1587,115 +1586,138 @@ export default function JoinRoomForStudent() {
   }
   if (!showQuestions) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
-        <style>{styles}</style>
-        <div className="max-w-3xl w-full p-8 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
-          <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold text-orange">
-              {room?.quiz?.name || "Phòng kiểm tra"}
-            </h1>
-          </div>
-
-          <div className="bg-gray-800 p-6 rounded-lg mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center space-x-2">
-                <HugeiconsIcon icon={ClockIcon} size={24} color="#FFA500" />
-                <span className="text-xl font-medium">{timeRemaining}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <HugeiconsIcon
-                  icon={UserGroup03Icon}
-                  size={24}
-                  color="#FFA500"
-                />
-                <span className="text-xl font-medium">
-                  {room?.participants?.length || 0} thí sinh
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-              <div className="relative flex-1 bg-gray-700 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Mã phòng</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-orange">
-                    {room?.roomCode}
-                  </span>
-                  <button
-                    onClick={() => handleCopy("code")}
-                    className="p-2 bg-gray-600 rounded-full hover:bg-gray-500 transition-colors"
-                  >
-                    <HugeiconsIcon icon={Copy01Icon} size={20} color="white" />
-                  </button>
-                </div>
-                <div
-                  className={`copy-feedback ${copied.code ? "visible" : ""}`}
-                >
-                  Đã sao chép!
-                </div>
-              </div>
-
-              <div className="relative flex-1 bg-gray-700 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Chia sẻ liên kết</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-orange">
-                    joinmyquiz.com
-                  </span>
-                  <button
-                    onClick={() => handleCopy("url")}
-                    className="p-2 bg-gray-600 rounded-full hover:bg-gray-500 transition-colors"
-                  >
-                    <HugeiconsIcon icon={Share08Icon} size={20} color="white" />
-                  </button>
-                </div>
-                <div className={`copy-feedback ${copied.url ? "visible" : ""}`}>
-                  Đã sao chép!
-                </div>
-              </div>
+      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full ">
+        <main className="flex flex-col justify-center items-center">
+          <style>{styles}</style>
+          <div className="flex justify-end w-full py-2 px-8">
+            <div className="flex bg-orange text-darkblue btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg cursor-pointer">
+              <p>Thoát</p>
             </div>
           </div>
-
-          {/* Participant list */}
-          <div className="bg-gray-800 p-6 rounded-lg">
-            <h2 className="text-xl font-bold mb-4 flex items-center">
-              <HugeiconsIcon
-                icon={UserGroup03Icon}
-                size={24}
-                color="#FFA500"
-                className="mr-2"
-              />
-              Danh sách thí sinh
-            </h2>
-            {room?.participants && room.participants.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {room.participants.map((participant, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="participant-card bg-gray-700 p-3 rounded-lg text-center"
-                  >
-                    <div className="w-12 h-12 mx-auto bg-gray-600 rounded-full overflow-hidden mb-2">
-                      <div className="participant-image w-full h-full flex items-center justify-center bg-gradient-to-br from-orange to-red-500 text-gray-900 font-bold text-xl">
-                        {participant?.user?.name
-                          ? participant.user.name.charAt(0).toUpperCase()
-                          : "?"}
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium truncate">
-                      {participant?.user?.name || "Unknown"}
-                    </p>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-center text-gray-400">
-                Chưa có thí sinh tham gia
+          <div className="bg-black/50 backdrop-blur-sm p-6 rounded-lg w-2/5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xl font-semibold">
+                {room?.quiz?.name || "Phòng kiểm tra"}
               </p>
-            )}
+
+              <p className="text-darkblue font-bold btn-hover cursor-pointer flex items-center gap-2 text-sm bg-orange  p-2 rounded-lg">
+                <HugeiconsIcon icon={Share08Icon} size={16} />
+                <span>Chia sẻ</span>
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-5 mt-5">
+              <div className="flex w-full flex-col gap-2">
+                <p className="text-md font-semibold">
+                  1. Sử dụng bất kỳ thiết bị nào để mở
+                </p>
+                <div className="flex items-center justify-between bg-rgba py-2 pl-4 pr-2 rounded-lg gap-2">
+                  <p className="text-2xl font-semibold">joinmyquiz.com</p>
+                  <div
+                    onClick={() => handleCopy("url")}
+                    className="flex items-center gap-2 bg-orange cursor-pointer btn-hover p-5 rounded-lg"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} />
+                    <div
+                      className={`copy-feedback ${
+                        copied.code ? "visible" : ""
+                      }`}
+                    >
+                      Đã sao chép!
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex w-full flex-col gap-2">
+                <p className="text-md font-semibold">2. Nhập mã để tham gia</p>
+                <div className="flex items-center justify-between bg-rgba py-2 pl-4 pr-2 rounded-lg gap-2">
+                  <p className="text-5xl tracking-widest font-semibold">
+                    {room?.roomCode}
+                  </p>
+                  <div
+                    onClick={() => handleCopy("code")}
+                    className="flex items-center gap-2 bg-orange cursor-pointer btn-hover p-5 rounded-lg"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} />
+                    <div
+                      className={`copy-feedback ${
+                        copied.code ? "visible" : ""
+                      }`}
+                    >
+                      Đã sao chép!
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+          <div className="w-full my-16">
+            <div className="flex relative items-center justify-center border-b-1 border-gray-800">
+              <div className="flex absolute left-5 items-center justify-center rounded-lg gap-2">
+                <div className="flex text-background border-2 border-gray-600 items-center gap-2 bg-black/50 backdrop-blur-sm cursor-pointer btn-hover p-2 px-5 rounded-lg">
+                  <HugeiconsIcon icon={UserGroup03Icon} />
+                  <p className="text-lg font-semibold">
+                    {room?.participants?.length || 0}
+                  </p>
+                </div>
+              </div>
+              <div className="flex absolute items-center justify-center rounded-lg gap-2">
+                <div
+                  className={`button-30 text-darkblue rounded-lg bg-orange px-10 py-5 
+                    animate-pulse-scale
+                  `}
+                >
+                  <p className="text-xl font-semibold ">
+                    <span className="text-xl font-medium">{timeRemaining}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-center mt-20 grid grid-cols-5 gap-5 mx-8">
+              {room?.participants?.map((participant: any) => {
+                console.log("Participant data:", {
+                  participant,
+                  id: participant._id,
+                  user: participant.user,
+                  name: participant?.user?.name,
+                  imageUrl: participant?.user?.imageUrl,
+                });
+                return (
+                  <div
+                    key={participant._id}
+                    className="flex flex-col relative h-full items-center justify-center gap-3 bg-[#384052]/50 backdrop-blur-sm p-5 rounded-lg group transition-all duration-300 hover:bg-[#384052]/70"
+                  >
+                    <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center border-2 border-orange/50">
+                      {participant.user?.imageUrl ? (
+                        <img
+                          className="w-full h-full object-cover"
+                          src={participant.user.imageUrl}
+                          alt={participant.user?.name || "Anonymous"}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange to-red-500 text-darkblue text-2xl font-bold">
+                          {participant.user?.name
+                            ? participant.user.name.charAt(0).toUpperCase()
+                            : "?"}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-semibold text-orange">
+                        {participant.user?.name || "Anonymous"}
+                      </p>
+                      <p className="text-sm text-gray-400">Thí sinh</p>
+                    </div>
+                    <div className="flex absolute left-2 right-2 top-2 bottom-2 bg-red-500/90 rounded-lg items-center justify-center gap-2 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
+                      <p className="text-sm font-semibold text-white">
+                        Nhấp để xóa thí sinh
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </main>
       </div>
     );
   }

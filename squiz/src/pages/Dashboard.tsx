@@ -16,15 +16,15 @@ export default function Dashboard() {
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const { user } = useUser();
 
-  const modalPlay = (quiz: Quiz) => { 
+  const modalPlay = (quiz: Quiz) => {
     console.log("Quiz clicked:", quiz);
     setIsModalOpen(true);
     setSelectedQuiz(quiz);
-    console.log(user)
-  }
+    console.log(user);
+  };
 
   useEffect(() => {
-    console.log(selectedQuiz)
+    console.log(selectedQuiz);
   }, [isModalOpen]);
 
   const fetchAllQuiz = async () => {
@@ -45,29 +45,29 @@ export default function Dashboard() {
       console.log("No user ID available");
       return;
     }
-    
+
     try {
       console.log(`Fetching quiz history for user: ${user.id}`);
       const response = await fetch(`${API_BASE_URL}/quiz/history/${user.id}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to fetch recent quizzes");
       }
-      
+
       const data = await response.json();
       console.log("Received quiz history data:", data);
-      
+
       if (data.success && data.data) {
         // Lấy danh sách quiz từ lịch sử tham gia
         const quizzes = data.data.map((history: any) => history.quiz as Quiz);
         console.log("Processed quizzes:", quizzes);
-        
+
         // Loại bỏ các quiz trùng lặp và giới hạn 6 quiz gần nhất
         const uniqueQuizzes = Array.from(
           new Map(quizzes.map((quiz: Quiz) => [quiz._id, quiz])).values()
         ).slice(0, 6) as Quiz[];
-        
+
         console.log("Final unique quizzes:", uniqueQuizzes);
         setRecentQuizzes(uniqueQuizzes);
       } else {
@@ -112,7 +112,10 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center relative empower_component w-full box-shadow ">
           <div className="text-2xl tracking-wide font-bold ml-2">
-            <h1>Xin chào, tôi là Squizz <br />Hãy tham gia cùng tôi nào!</h1>
+            <h1>
+              Xin chào, tôi là Squizz <br />
+              Hãy tham gia cùng tôi nào!
+            </h1>
           </div>
 
           <img
@@ -124,21 +127,30 @@ export default function Dashboard() {
           <div className="noise"></div>
         </div>
       </div>
-      
+
       <div className="mb-20">
         <div className="flex justify-between mb-5">
           <h1 className="text-2xl mb-5">Hoạt động gần đây</h1>
-          <NavLink to="/dashboard/my-quiz/hosted-quizzes" className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full">
+          <NavLink
+            to="/dashboard/my-quiz/hosted-quizzes"
+            className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full"
+          >
             <p className="px-5 py-1">Xem thêm</p>
           </NavLink>
         </div>
         <div className="grid grid-cols-4 gap-5">
           {recentQuizzes.length > 0 ? (
             recentQuizzes.map((quiz: Quiz) => (
-              <QuizzCard key={quiz._id} quiz={quiz} handleCardClick={() => modalPlay(quiz)} />
+              <QuizzCard
+                key={quiz._id}
+                quiz={quiz}
+                handleCardClick={() => modalPlay(quiz)}
+              />
             ))
           ) : (
-            <p className="col-span-4 text-center text-gray-500">Chưa có hoạt động nào gần đây</p>
+            <p className="col-span-4 text-center text-gray-500">
+              Chưa có hoạt động nào gần đây
+            </p>
           )}
         </div>
       </div>
@@ -152,14 +164,20 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-4 gap-5">
           {filteredQuizzes.map((quiz: Quiz) => (
-            <QuizzCard key={quiz._id} quiz={quiz} handleCardClick={() => modalPlay(quiz)} />
+            <QuizzCard
+              key={quiz._id}
+              quiz={quiz}
+              handleCardClick={() => modalPlay(quiz)}
+            />
           ))}
         </div>
       </div>
       {isModalOpen && selectedQuiz && (
-        <QuizDetailModal quiz={selectedQuiz} onClose={() => setIsModalOpen(false)} />
+        <QuizDetailModal
+          quiz={selectedQuiz}
+          onClose={() => setIsModalOpen(false)}
+        />
       )}
-      
     </div>
   );
 }

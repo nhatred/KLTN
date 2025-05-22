@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { Quiz } from "../types/Quiz";
+import { format } from "date-fns";
 import QuizDetailModal from "../components/QuizDetailModal";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -148,17 +149,17 @@ export default function Activity() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background p-8">
+    <div className="min-h-screen bg-background p-8">
       <h1 className="text-2xl mb-10 mt-16">Hoạt động của bạn</h1>
 
       {/* Tab Navigation */}
       <div className="flex gap-4 mb-8">
         <button
           onClick={() => setActiveTab("practice")}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${
+          className={`flex items-center font-semibold gap-2 px-6 py-3 border-1 rounded-xl transition-all ${
             activeTab === "practice"
-              ? "bg-orange text-darkblue"
-              : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"
+              ? "bg-orange text-darkblue border-orange"
+              : "bg-background text-darkblue border-gray-200 "
           }`}
         >
           <HugeiconsIcon icon={BookOpenIcon} size={20} />
@@ -166,10 +167,10 @@ export default function Activity() {
         </button>
         <button
           onClick={() => setActiveTab("exam")}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${
+          className={`flex items-center font-semibold gap-2 px-6 py-3 border-1 rounded-xl transition-all ${
             activeTab === "exam"
-              ? "bg-orange text-darkblue"
-              : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"
+              ? "bg-orange text-darkblue border-orange"
+              : "bg-background text-darkblue border-gray-200 "
           }`}
         >
           {/* <HugeiconsIcon icon={GraduationCapIcon} size={20} /> */}
@@ -180,81 +181,101 @@ export default function Activity() {
       {/* Practice Results */}
       {activeTab === "practice" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {quizPracticeResults.map((result) => (
+          {quizPracticeResults.map((history) => (
             <div
-              key={result.participationId}
-              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300"
+              key={history.participationId}
+              className="bg-white box-shadow hover:shadow-xl transition-all duration-300 cursor-pointer quizcard_component rounded-xl w-full"
             >
-              {/* Quiz Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-orange mb-2">
-                    {result.quiz.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                      {result.quiz.topic}
+              <div className="noise  rounded-2xl"></div>
+              <div className="relative quizcard_component">
+                <img
+                  src={
+                    history.quiz.imageUrl || "/assets/default-quiz-cover.jpg"
+                  }
+                  alt={history.quiz.name}
+                  className="w-full h-64 object-cover rounded-t-xl"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+
+                <div className="absolute top-4 right-4">
+                  <p
+                    className={`py-1 px-4 text-sm text-white font-semibold rounded-full ${
+                      history.quiz.difficulty === "easy"
+                        ? "bg-green-500"
+                        : history.quiz.difficulty === "medium"
+                        ? "bg-orange"
+                        : "bg-red-wine"
+                    }`}
+                  >
+                    {history.quiz.difficulty === "easy"
+                      ? "Dễ"
+                      : history.quiz.difficulty === "medium"
+                      ? "Trung bình"
+                      : "Khó"}
+                  </p>
+                </div>
+
+                <h3 className="absolute bottom-4 left-4 right-4 text-xl font-bold text-white">
+                  {history.quiz.name}
+                </h3>
+              </div>
+
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <HugeiconsIcon
+                      icon={HelpSquareIcon}
+                      size={20}
+                      color="#FF5733"
+                    />
+                    <span className="font-medium">
+                      {history.stats.totalQuestions} câu hỏi
                     </span>
-                    <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                      {result.quiz.difficulty}
-                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">Điểm số cao nhất</p>
+                    <p className="font-bold text-lg">{history.score}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-orange">
-                    {result.score}/{result.stats.totalQuestions}
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    {new Date(result.joinedAt).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-gray-700/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                    <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />
-                    <span>Đúng</span>
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Tỷ lệ đúng</span>
+                    <span>{history.stats.correctPercentage}%</span>
                   </div>
-                  <div className="text-lg font-semibold text-green-400">
-                    {result.stats.correctAnswers}
-                  </div>
-                </div>
-                <div className="bg-gray-700/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                    <HugeiconsIcon icon={Cancel01Icon} size={16} />
-                    <span>Sai</span>
-                  </div>
-                  <div className="text-lg font-semibold text-red-400">
-                    {result.stats.incorrectAnswers}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-orange h-2 rounded-full"
+                      style={{ width: `${history.stats.correctPercentage}%` }}
+                    ></div>
                   </div>
                 </div>
-              </div>
 
-              {/* Progress Bar */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-400 mb-1">
-                  <span>Tỷ lệ đúng</span>
-                  <span>{result.stats.correctPercentage}%</span>
+                <div className="flex justify-between text-sm text-gray-500 mb-4">
+                  <span>
+                    Tham gia: {format(new Date(history.joinedAt), "dd/MM/yyyy")}
+                  </span>
+                  <span>
+                    {history.stats.correctAnswers}/
+                    {history.stats.totalQuestions} câu đúng
+                  </span>
                 </div>
-                <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-orange to-red-500 transition-all duration-500"
-                    style={{ width: `${result.stats.correctPercentage}%` }}
-                  />
-                </div>
-              </div>
 
-              {/* Additional Info */}
-              <div className="flex items-center justify-between text-sm text-gray-400">
-                <div className="flex items-center gap-1">
-                  <HugeiconsIcon icon={ClockIcon} size={16} />
-                  <span>{new Date(result.joinedAt).toLocaleTimeString()}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <HugeiconsIcon icon={Chart02Icon} size={16} />
-                  <span>{result.quiz.totalPlays} người đã làm</span>
+                <div className="flex gap-3">
+                  <button
+                    className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-gray-300 btn-hover w-1/3"
+                    onClick={() => modalPlay(history.quiz)}
+                  >
+                    <span className="font-medium">Chi tiết</span>
+                  </button>
+
+                  <NavLink
+                    to={`/join-quiz/${history.quiz._id}`}
+                    className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-orange btn-hover w-2/3"
+                  >
+                    <span className="text-darkblue font-bold">Chơi lại</span>
+                    <HugeiconsIcon icon={PlayIcon} size={20} color="#0A0A3F" />
+                  </NavLink>
                 </div>
               </div>
             </div>

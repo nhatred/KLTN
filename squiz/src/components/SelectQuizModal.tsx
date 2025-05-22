@@ -1,166 +1,225 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth, useClerk } from '@clerk/clerk-react';
-import { useNavigate } from 'react-router';
-import { Quiz } from '../types/Quiz';
+import React, { useState, useEffect } from "react";
+import { useAuth, useClerk } from "@clerk/clerk-react";
+import { useNavigate } from "react-router";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Book01Icon, SearchAreaIcon } from "@hugeicons/core-free-icons";
+import axios from "axios";
 
-interface SelectQuizModalProps {
-    isOpen: boolean;
-    onClose: () => void;
+interface ExamSet {
+  _id: string;
+  name: string;
+  subject: string;
+  grade: string;
+  questions: any[];
 }
 
-const SelectQuizModal: React.FC<SelectQuizModalProps> = ({ isOpen, onClose }) => {
-    const [isMyQuizzes, setIsMyQuizzes] = useState(false);
-    const [isFavoriteQuizzes, setIsFavoriteQuizzes] = useState(false);
-    const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([]);
-    const [displayedQuizzes, setDisplayedQuizzes] = useState<Quiz[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const { userId } = useAuth();
-    const { session } = useClerk();
-    const navigate = useNavigate();
+interface Section {
+  difficulty: "easy" | "medium" | "hard";
+  numberOfQuestions: number;
+}
 
-    useEffect(() => {
-        if (!isOpen) return;
-        fetchQuizzes();
-    }, [isOpen]);
+interface SelectQuizModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
-    useEffect(() => {
-        if (isMyQuizzes) {
-            setDisplayedQuizzes(allQuizzes.filter(quiz => quiz.creator === userId));
-        } else if (isFavoriteQuizzes) {
-            setDisplayedQuizzes(allQuizzes.filter(quiz => quiz.favorites?.includes(userId || '')));
-        } else {
-            setDisplayedQuizzes(allQuizzes);
-        }
-    }, [isMyQuizzes, isFavoriteQuizzes, allQuizzes, userId]);
+const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
+  isOpen,
+  onClose,
+}) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedExam, setSelectedExam] = useState<ExamSet | null>(null);
+  const [sections, setSections] = useState<Section[]>([
+    { difficulty: "easy", numberOfQuestions: 0 },
+    { difficulty: "medium", numberOfQuestions: 0 },
+    { difficulty: "hard", numberOfQuestions: 0 },
+  ]);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [examSets, setExamSets] = useState<ExamSet[]>([]);
+  const { userId } = useAuth();
+  const { session } = useClerk();
+  const navigate = useNavigate();
 
-    const fetchQuizzes = async () => {
-        if (!userId || !session) return;
+  useEffect(() => {
+    if (isOpen) {
+      fetchExamSets();
+    }
+  }, [isOpen]);
 
-        setIsLoading(true);
-        try {
-            const token = await session.getToken();
-            if (!token) {
-                console.error('No token available');
-                return;
-            }
+  const fetchExamSets = async () => {
+    try {
+      const token = await session?.getToken();
+      if (!token) {
+        console.error("No token available");
+        return;
+      }
 
-            const response = await fetch(
-                `http://localhost:5000/api/quiz`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
+      const response = await axios.get("http://localhost:5000/api/examSets", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setExamSets(response.data);
+    } catch (error) {
+      console.error("Error fetching exam sets:", error);
+    }
+  };
 
-            const data = await response.json();
-            setAllQuizzes(data);
-        } catch (error) {
-            console.error('Error fetching quizzes:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleQuizSelect = (quizId: string) => {
-        navigate(`/create-room/${quizId}`);
-        onClose();
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div  onClick={onClose} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div  onClick={e => e.stopPropagation()} className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold">Chọn Quiz</h2>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-500 hover:text-gray-700"
-                    >
-                        ✕
-                    </button>
-                </div>
-
-                {/* Quiz Type Selection */}
-                <div className="flex gap-4 mb-6">
-                    <button
-                        className={`px-4 py-2 rounded-lg ${
-                            !isMyQuizzes && !isFavoriteQuizzes
-                                ? 'bg-orange text-white'
-                                : 'bg-gray-100 hover:bg-gray-200'
-                        }`}
-                        onClick={() => {
-                            setIsMyQuizzes(false);
-                            setIsFavoriteQuizzes(false);
-                        }}
-                    >
-                        Quiz Công khai
-                    </button>
-                    <button
-                        className={`px-4 py-2 rounded-lg ${
-                            isMyQuizzes
-                                ? 'bg-orange text-white'
-                                : 'bg-gray-100 hover:bg-gray-200'
-                        }`}
-                        onClick={() => {
-                            setIsMyQuizzes(true);
-                            setIsFavoriteQuizzes(false);
-                        }}
-                    >
-                        Quiz của bạn
-                    </button>
-                    <button
-                        className={`px-4 py-2 rounded-lg ${
-                            isFavoriteQuizzes
-                                ? 'bg-orange text-white'
-                                : 'bg-gray-100 hover:bg-gray-200'
-                        }`}
-                        onClick={() => {
-                            setIsFavoriteQuizzes(true);
-                            setIsMyQuizzes(false);
-                        }}
-                    >
-                        Quiz yêu thích
-                    </button>
-                </div>
-
-                {/* Quiz List */}
-                <div className="flex-1 overflow-y-auto">
-                    {isLoading ? (
-                        <div className="flex justify-center items-center h-32">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange"></div>
-                        </div>
-                    ) : displayedQuizzes.length === 0 ? (
-                        <div className="text-center text-gray-500 py-8">
-                            Không có quiz nào
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {displayedQuizzes.map((quiz) => (
-                                <div
-                                    key={quiz._id}
-                                    className="border rounded-lg p-4 hover:border-orange cursor-pointer transition-colors"
-                                    onClick={() => handleQuizSelect(quiz._id)}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <img src={quiz.imageUrl} alt="" className="w-20 h-20 object-cover rounded-lg" />
-                                        <div className="flex flex-col">
-                                            <h3 className="font-semibold text-lg mb-2">
-                                                {quiz.name}
-                                            </h3>
-                                            <p className="text-darkblue font-semibold text-sm">{quiz.topic}</p>
-                                            <p className="text-darkblue font-semibold text-sm">Có {quiz.totalPlays} lượt chơi</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+  const handleSectionChange = (index: number, value: number) => {
+    const newSections = [...sections];
+    newSections[index].numberOfQuestions = value;
+    setSections(newSections);
+    setTotalQuestions(
+      newSections.reduce((sum, section) => sum + section.numberOfQuestions, 0)
     );
+  };
+
+  const handleCreateRoom = async () => {
+    if (!selectedExam) {
+      alert("Vui lòng chọn đề thi");
+      return;
+    }
+
+    if (totalQuestions === 0) {
+      alert("Vui lòng nhập số câu hỏi cho mỗi phần");
+      return;
+    }
+
+    try {
+      const token = await session?.getToken();
+      if (!token) {
+        alert("Vui lòng đăng nhập để tạo phòng thi");
+        return;
+      }
+
+      // Chuyển hướng đến trang tạo phòng với examId
+      navigate(
+        `/create-room/${selectedExam._id}?sections=${JSON.stringify(sections)}`
+      );
+      onClose();
+    } catch (error) {
+      console.error("Error creating room:", error);
+      alert("Có lỗi xảy ra khi tạo phòng thi");
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Chọn đề thi</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            Đóng
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative">
+            <HugeiconsIcon
+              icon={SearchAreaIcon}
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm đề thi..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="space-y-6">
+          {/* Exam List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+            {examSets
+              .filter((exam) =>
+                exam.name.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .map((exam) => (
+                <div
+                  key={exam._id}
+                  onClick={() => setSelectedExam(exam)}
+                  className={`p-4 border rounded-lg cursor-pointer ${
+                    selectedExam?._id === exam._id
+                      ? "border-orange bg-orange-50"
+                      : "border-gray-200 hover:border-orange"
+                  }`}
+                >
+                  <h3 className="font-semibold">{exam.name}</h3>
+                  <p className="text-sm text-gray-600">
+                    {exam.subject} - Khối {exam.grade}
+                  </p>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-sm text-gray-500">
+                      {exam.questions.length} câu hỏi
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+
+          {/* Section Configuration */}
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Cấu hình số câu hỏi</h3>
+            <div className="space-y-4">
+              {sections.map((section, index) => (
+                <div
+                  key={section.difficulty}
+                  className="flex items-center gap-4"
+                >
+                  <label className="w-32 text-sm font-medium">
+                    {section.difficulty === "easy"
+                      ? "Dễ"
+                      : section.difficulty === "medium"
+                      ? "Trung bình"
+                      : "Khó"}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={section.numberOfQuestions}
+                    onChange={(e) =>
+                      handleSectionChange(index, parseInt(e.target.value) || 0)
+                    }
+                    className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange focus:border-transparent"
+                  />
+                  <span className="text-sm text-gray-500">câu hỏi</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-4 mt-4">
+                <span className="w-32 text-sm font-medium">Tổng số câu:</span>
+                <span className="text-lg font-semibold">{totalQuestions}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Hủy
+          </button>
+          <button
+            onClick={handleCreateRoom}
+            className="px-4 py-2 bg-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            Tạo phòng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default SelectQuizModal;

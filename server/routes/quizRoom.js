@@ -21,7 +21,7 @@ const router = express.Router();
 
 // Tạo phòng thi từ một quiz
 router.post("/", verifyToken, protectCreator, createRoom);
-// Bắt đầu phòng thi thủ công
+// Bắt đầu phòng thi thủ côngs
 router.post("/:id/start", verifyToken, startRoom);
 // Lấy thông tin phòng bằng mã phòng (public)
 router.get("/code/:roomCode", getRoomByCode);

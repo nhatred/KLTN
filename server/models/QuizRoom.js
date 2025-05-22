@@ -13,7 +13,12 @@ const quizRoomSchema = new mongoose.Schema(
           `${props.value} không phải mã phòng hợp lệ (6 ký tự A-Z, 0-9)`,
       },
     },
-    quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz", required: true },
+    quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
+    examSetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ExamSet",
+      required: true,
+    },
     host: { type: String, ref: "User", required: true },
     startTime: { type: Date },
     isActive: { type: Boolean, default: false },

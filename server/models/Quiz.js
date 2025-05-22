@@ -29,7 +29,7 @@ const quizSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-quizSchema.virtual('questionCount').get(function() {
+quizSchema.virtual("questionCount").get(function () {
   return this.questions?.length || 0;
 });
 
