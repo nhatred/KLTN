@@ -1,7 +1,10 @@
-import express from 'express';
-import { getParticipantStatus, _formatQuestion } from '../controllers/ParticipantController.js';
-import verifyToken from '../middlewares/auth.js';
-import requireAuth from '../middlewares/requireAuth.js';
+import express from "express";
+import {
+  getParticipantStatus,
+  _formatQuestion,
+} from "../controllers/participantController.js";
+import verifyToken from "../middlewares/auth.js";
+import requireAuth from "../middlewares/requireAuth.js";
 
 const router = express.Router();
 
@@ -21,6 +24,6 @@ const router = express.Router();
 // router.delete('/:id', verifyToken, requireAuth, leaveRoom);
 
 // Lấy trạng thái hiện tại của người tham gia
-router.get('/:id/status', verifyToken, requireAuth, getParticipantStatus);
+router.get("/:id/status", verifyToken, requireAuth, getParticipantStatus);
 
 export default router;

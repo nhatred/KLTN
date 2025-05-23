@@ -121,6 +121,30 @@ async function joinRoom(socket, data) {
       (q) => q.questionId
     );
 
+    // Lấy thông tin user từ Clerk
+    const clerkApiUrl = process.env.CLERK_API_URL || "https://api.clerk.com/v1";
+    const userResponse = await fetch(`${clerkApiUrl}/users/${userId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+      },
+    });
+
+    if (!userResponse.ok) {
+      throw new Error("Failed to fetch user data from Clerk");
+    }
+
+    const userData = await userResponse.json();
+
+    // Thêm thông tin user vào participant
+    participant = {
+      ...participant.toObject(),
+      user: {
+        _id: userId,
+        name: userData.first_name + " " + userData.last_name,
+        imageUrl: userData.image_url,
+      },
+    };
+
     console.log("=== END JOIN ROOM ===");
     return {
       success: true,

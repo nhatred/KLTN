@@ -19,11 +19,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import "../style/button.css";
 import { useParams, useNavigate } from "react-router";
-import { Room } from "../types/Room";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { Question } from "../types/Question";
 import { motion, AnimatePresence } from "framer-motion";
 import { io, Socket } from "socket.io-client";
+import QuizResults from "../components/QuizResults";
 
 interface ServerResponse {
   success: boolean;
@@ -33,15 +33,77 @@ interface ServerResponse {
 
 interface SocketResponse {
   success: boolean;
+  message?: string;
+  data?: any;
+}
+
+interface Room {
+  _id: string;
+  roomCode: string;
+  examSetId: string;
+  host: {
+    _id: string;
+    name: string;
+    imageUrl: string;
+  };
+  startTime: string;
+  endTime: string;
+  status: string;
+  participants: Array<{
+    _id: string;
+    user: {
+      _id: string;
+      name: string;
+      imageUrl: string;
+    };
+  }>;
+  durationMinutes: number;
+  quiz?: any; // For backward compatibility
+}
+
+interface Participant {
+  _id: string;
+  user: {
+    _id: string;
+    name: string;
+    imageUrl: string;
+  };
+}
+
+interface Answer {
   questionId: string;
-  answer: string;
+  userAnswer: string;
   correctAnswer: string;
   isCorrect: boolean;
+}
+
+interface QuizResults {
+  score: number;
+  stats: {
+    totalQuestions: number;
+    correctAnswers: number;
+    incorrectAnswers: number;
+    correctPercentage: number;
+  };
+}
+
+interface ParticipantInfo {
+  _id: string;
+  user: {
+    _id: string;
+    name: string;
+    imageUrl: string;
+  };
+}
+
+interface ParticipantResponse extends SocketResponse {
+  data?: ParticipantInfo;
 }
 
 export default function JoinRoomForStudent() {
   const { code } = useParams();
   const { getToken, userId } = useAuth();
+  const { user } = useUser();
   const navigate = useNavigate();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -161,10 +223,88 @@ export default function JoinRoomForStudent() {
     };
   }, [submitted, code]);
 
+  const handleJoinRoom = useCallback(
+    async (roomData: any) => {
+      try {
+        if (!socket) {
+          throw new Error("Socket connection not available");
+        }
+
+        // Join room using Socket.IO
+        return new Promise((resolve, reject) => {
+          socket.emit(
+            "joinRoom",
+            {
+              roomCode: roomData.roomCode,
+              userId,
+              deviceInfo: {
+                browser: navigator.userAgent,
+                timestamp: new Date().toISOString(),
+              },
+            },
+            async (response: any) => {
+              if (!response.success) {
+                reject(new Error(response.message || "Failed to join room"));
+                return;
+              }
+
+              try {
+                // Refresh room data after joining
+                const token = await getToken();
+                const updatedResponse = await fetch(
+                  `http://localhost:5000/api/quizRoom/code/${roomData.roomCode}`,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      "Content-Type": "application/json",
+                    },
+                  }
+                );
+                const updatedData = await updatedResponse.json();
+                if (updatedData.success) {
+                  resolve(updatedData.data);
+                } else {
+                  reject(
+                    new Error(
+                      updatedData.message || "Failed to get updated room data"
+                    )
+                  );
+                }
+              } catch (error) {
+                reject(error);
+              }
+            }
+          );
+        });
+      } catch (error) {
+        throw error;
+      }
+    },
+    [socket, userId, getToken]
+  );
+
   const getRoom = useCallback(async () => {
     try {
       setLoading(true);
+
+      // Wait for user data to be available
+      if (!user || !userId) {
+        console.log("Waiting for user data...");
+        return;
+      }
+
       const token = await getToken();
+      if (!token) {
+        console.error("No authentication token available");
+        return;
+      }
+
+      console.log("User data:", {
+        userId,
+        name: user.fullName,
+        imageUrl: user.imageUrl,
+        token: token ? "Available" : "Not available",
+      });
 
       // Check if quiz was already submitted
       const isSubmitted =
@@ -184,36 +324,69 @@ export default function JoinRoomForStudent() {
         {
           headers: {
             Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
         }
       );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       if (data.success) {
         console.log("Room data received:", {
           room: data.data,
           participants: data.data.participants,
-          participantsDetails: data.data.participants.map((p: any) => ({
-            id: p._id,
-            user: p.user,
-            name: p?.user?.name,
-            imageUrl: p?.user?.imageUrl,
-          })),
+          currentUser: {
+            id: userId,
+            name: user.fullName,
+            imageUrl: user.imageUrl,
+          },
         });
-        setRoom(data.data);
-        if (data.data.quiz?._id) {
+
+        // Check if user is already a participant
+        const isParticipant = data.data.participants?.some(
+          (p: any) => p.user?._id === userId
+        );
+
+        if (!isParticipant) {
+          // Join room as a new participant
+          const updatedRoomData = await handleJoinRoom(data.data);
+          setRoom(updatedRoomData as Room);
+        } else {
+          setRoom(data.data);
+        }
+
+        if (data.data.examSetId) {
+          console.log("Fetching exam set with ID:", data.data.examSetId);
           const quizResponse = await fetch(
-            `http://localhost:5000/api/quiz/${data.data.quiz._id}`,
+            `http://localhost:5000/api/examSets/${data.data.examSetId}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
               },
             }
           );
-          const quizData = await quizResponse.json();
-          if (quizData.success && quizData.data.questions) {
-            setQuestions(quizData.data.questions);
+
+          if (!quizResponse.ok) {
+            throw new Error(
+              `Failed to fetch exam set: ${quizResponse.statusText}`
+            );
           }
+
+          const quizData = await quizResponse.json();
+          console.log("Quiz data received:", quizData);
+
+          if (quizData && quizData.questions) {
+            setQuestions(quizData.questions);
+            setShowQuestions(false);
+          } else {
+            console.error("No questions found in quiz data:", quizData);
+          }
+        } else {
+          console.error("No examSetId found in room data:", data.data);
         }
       } else {
         throw new Error(data.message || "Không thể tải dữ liệu phòng");
@@ -223,32 +396,38 @@ export default function JoinRoomForStudent() {
     } finally {
       setLoading(false);
     }
-  }, [code, getToken]);
+  }, [code, getToken, user, userId, handleJoinRoom]);
+
+  // Effect to retry getting room data when user info becomes available
+  useEffect(() => {
+    if (user && userId) {
+      getRoom();
+    }
+  }, [user, userId, getRoom]);
 
   const handleConfirm = useCallback(async () => {
     try {
       if (submitted) {
-        return; // Just return if already submitted
+        return;
       }
 
-      if (!socket || !room || !userId) {
+      if (!socket || !room || !userId || !user) {
         throw new Error(
           "Không thể kết nối đến server hoặc không tìm thấy thông tin người dùng"
         );
       }
 
-      console.log("Room data:", room); // Debug log
-      console.log("User ID:", userId); // Debug log
-      console.log("Participants:", room.participants); // Debug log
+      console.log("Current user ID:", userId);
+      console.log("Current room participants:", room.participants);
 
-      // Find the current user's participant record
-      const currentParticipant = room.participants?.find(
-        (p) => p.user?._id === userId
-      );
+      // Use userId directly as participant identifier
+      let currentParticipant = userId;
 
       if (!currentParticipant) {
-        // Try to join room first to get participant info
-        const joinResponse = await new Promise<ServerResponse>(
+        console.log("Participant not found, attempting to join room...");
+
+        // Try to join room if participant doesn't exist
+        const joinResponse = await new Promise<SocketResponse>(
           (resolve, reject) => {
             socket.emit(
               "joinRoom",
@@ -256,400 +435,180 @@ export default function JoinRoomForStudent() {
                 userId,
                 roomId: room._id,
                 roomCode: room.roomCode,
+                deviceInfo: {
+                  browser: navigator.userAgent,
+                  timestamp: new Date().toISOString(),
+                },
               },
-              (response: ServerResponse) => {
-                if (response.success) {
-                  resolve(response);
-                } else {
-                  reject(
-                    new Error(
-                      response.message || "Không thể tham gia phòng thi"
-                    )
-                  );
-                }
+              (response: SocketResponse) => {
+                console.log("Join room response:", response);
+                resolve(response);
               }
             );
           }
         );
 
-        // After joining, try to get participant info again
-        const participantResponse = await new Promise<ServerResponse>(
-          (resolve, reject) => {
-            socket.emit(
-              "getParticipantInfo",
-              {
-                userId,
-                roomId: room._id,
-              },
-              (response: ServerResponse) => {
-                if (response.success && response.data) {
-                  resolve(response);
-                } else {
-                  reject(
-                    new Error(
-                      response.message ||
-                        "Không thể lấy thông tin người tham gia"
-                    )
-                  );
-                }
-              }
-            );
-          }
-        );
-
-        if (!participantResponse.data) {
-          throw new Error("Không thể lấy thông tin người tham gia");
-        }
-
-        // Update room data with new participant info
-        const updatedRoom = {
-          ...room,
-          participants: [
-            ...(room.participants || []),
-            participantResponse.data,
-          ],
-        };
-        setRoom(updatedRoom);
-
-        // Use the new participant info
-        const newParticipant = participantResponse.data;
-        if (!newParticipant || !newParticipant._id) {
-          throw new Error("Thông tin người tham gia không hợp lệ");
-        }
-
-        // Submit answers with new participant info
-        const submissions = await Promise.all(
-          Object.entries(selectedAnswers).map(([questionId, answer]) => {
-            return new Promise<SocketResponse>((resolve, reject) => {
-              const submitWithRetry = async (retryCount = 0) => {
-                try {
-                  socket.emit(
-                    "submitAnswer",
-                    {
-                      participantId: newParticipant._id,
-                      questionId,
-                      answer,
-                      roomId: room._id,
-                      roomCode: room.roomCode,
-                      clientTimestamp: new Date().toISOString(),
-                    },
-                    (response: ServerResponse) => {
-                      if (response.success) {
-                        const question = questions.find(
-                          (q) => q._id === questionId
-                        );
-                        const correctAnswer =
-                          question?.answers.find((a) => a.isCorrect)?.text ||
-                          "Không xác định";
-                        resolve({
-                          success: true,
-                          questionId,
-                          answer,
-                          correctAnswer,
-                          isCorrect: answer === correctAnswer,
-                        });
-                      } else if (
-                        response.message?.includes("version") &&
-                        retryCount < 3
-                      ) {
-                        setTimeout(() => submitWithRetry(retryCount + 1), 500);
-                      } else {
-                        reject(
-                          new Error(
-                            response.message || "Lỗi khi nộp câu trả lời"
-                          )
-                        );
-                      }
-                    }
-                  );
-                } catch (error) {
-                  if (retryCount < 3) {
-                    setTimeout(() => submitWithRetry(retryCount + 1), 500);
-                  } else {
-                    reject(error);
-                  }
-                }
-              };
-
-              submitWithRetry();
-            });
-          })
-        );
-
-        // Calculate and set results
-        const results = {
-          score: submissions.reduce(
-            (total: number, sub: any) => total + (sub.isCorrect ? 1 : 0),
-            0
-          ),
-          stats: {
-            totalQuestions: Object.keys(selectedAnswers).length,
-            correctAnswers: submissions.filter((sub: any) => sub.isCorrect)
-              .length,
-            incorrectAnswers: submissions.filter((sub: any) => !sub.isCorrect)
-              .length,
-            correctPercentage: Math.round(
-              (submissions.filter((sub: any) => sub.isCorrect).length /
-                Object.keys(selectedAnswers).length) *
-                100
-            ),
-          },
-          answers: submissions.map((sub: any) => ({
-            questionId: sub.questionId,
-            userAnswer: sub.answer,
-            correctAnswer: sub.correctAnswer,
-            isCorrect: sub.isCorrect,
-          })),
-        };
-
-        // Save results to database
-        try {
-          const token = await getToken();
-          const response = await fetch(
-            "http://localhost:5000/api/quiz/results",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                quizId: room.quiz._id,
-                userAnswers: results.answers.map((answer) => ({
-                  questionId: answer.questionId,
-                  userAnswer: answer.userAnswer,
-                  correctAnswer: answer.correctAnswer,
-                  isCorrect: Boolean(answer.isCorrect),
-                })),
-                score: results.score,
-                userId: userId,
-                username: currentParticipant?.user?.name || "Anonymous",
-                totalScore: Object.keys(selectedAnswers).length,
-                deviceId: newParticipant._id,
-                stats: {
-                  totalQuestions: results.stats.totalQuestions,
-                  correctAnswers: results.stats.correctAnswers,
-                  incorrectAnswers: results.stats.incorrectAnswers,
-                  correctPercentage: results.stats.correctPercentage,
-                },
-              }),
-            }
+        if (!joinResponse.success) {
+          throw new Error(
+            joinResponse.message || "Không thể tham gia phòng thi"
           );
-
-          const data = await response.json();
-          if (!data.success) {
-            console.error("Failed to save quiz results:", data.message);
-          } else {
-            console.log("Quiz results saved successfully");
-          }
-        } catch (error) {
-          console.error("Error saving quiz results:", error);
         }
 
-        setQuizResults(results);
-        setSubmitted(true);
-        setShowConfirmModal(false);
-
-        // Clear saved answers and current question
-        localStorage.removeItem(`quiz_answers_${code}`);
-        localStorage.removeItem(`quiz_current_question_${code}`);
-
-        // Save submission state and results
-        localStorage.setItem(`quiz_submitted_${code}`, "true");
-        localStorage.setItem(`quiz_results_${code}`, JSON.stringify(results));
-      } else {
-        console.log("Found participant:", currentParticipant); // Debug log
-
-        // Join room with existing participant
-        await new Promise<void>((resolve, reject) => {
-          socket.emit(
-            "joinRoom",
-            {
-              participantId: currentParticipant._id,
-              roomId: room._id,
-              roomCode: room.roomCode,
-            },
-            (response: ServerResponse) => {
-              console.log("Join room response:", response); // Debug log
-              if (response.success) {
-                resolve();
-              } else {
-                reject(
-                  new Error(response.message || "Không thể tham gia phòng thi")
-                );
-              }
-            }
-          );
-        });
-
-        // Submit answers
-        const submissions = await Promise.all(
-          Object.entries(selectedAnswers).map(([questionId, answer]) => {
-            return new Promise<SocketResponse>((resolve, reject) => {
-              const submitWithRetry = async (retryCount = 0) => {
-                try {
-                  console.log(
-                    "Submitting answer for question:",
-                    questionId,
-                    "answer:",
-                    answer,
-                    "retry:",
-                    retryCount
-                  ); // Debug log
-                  socket.emit(
-                    "submitAnswer",
-                    {
-                      participantId: currentParticipant._id,
-                      questionId,
-                      answer,
-                      roomId: room._id,
-                      roomCode: room.roomCode,
-                      clientTimestamp: new Date().toISOString(),
-                    },
-                    (response: ServerResponse) => {
-                      console.log("Server response:", response); // Debug log
-                      if (response.success) {
-                        const question = questions.find(
-                          (q) => q._id === questionId
-                        );
-                        const correctAnswer =
-                          question?.answers.find((a) => a.isCorrect)?.text ||
-                          "Không xác định";
-                        resolve({
-                          success: true,
-                          questionId,
-                          answer,
-                          correctAnswer,
-                          isCorrect: answer === correctAnswer,
-                        });
-                      } else if (
-                        response.message?.includes("version") &&
-                        retryCount < 3
-                      ) {
-                        console.log("Version conflict, retrying..."); // Debug log
-                        setTimeout(() => submitWithRetry(retryCount + 1), 500);
-                      } else {
-                        reject(
-                          new Error(
-                            response.message || "Lỗi khi nộp câu trả lời"
-                          )
-                        );
-                      }
-                    }
-                  );
-                } catch (error) {
-                  if (retryCount < 3) {
-                    console.log("Error occurred, retrying..."); // Debug log
-                    setTimeout(() => submitWithRetry(retryCount + 1), 500);
-                  } else {
-                    reject(error);
-                  }
-                }
-              };
-
-              submitWithRetry();
-            });
-          })
-        );
-
-        // Calculate results
-        const results = {
-          score: submissions.reduce(
-            (total: number, sub: any) => total + (sub.isCorrect ? 1 : 0),
-            0
-          ),
-          stats: {
-            totalQuestions: Object.keys(selectedAnswers).length,
-            correctAnswers: submissions.filter((sub: any) => sub.isCorrect)
-              .length,
-            incorrectAnswers: submissions.filter((sub: any) => !sub.isCorrect)
-              .length,
-            correctPercentage: Math.round(
-              (submissions.filter((sub: any) => sub.isCorrect).length /
-                Object.keys(selectedAnswers).length) *
-                100
-            ),
-          },
-          answers: submissions.map((sub: any) => ({
-            questionId: sub.questionId,
-            userAnswer: sub.answer,
-            correctAnswer: sub.correctAnswer,
-            isCorrect: sub.isCorrect,
-          })),
-        };
-
-        // Save results to database
-        try {
-          const token = await getToken();
-          const response = await fetch(
-            "http://localhost:5000/api/quiz/results",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                quizId: room.quiz._id,
-                userAnswers: results.answers.map((answer) => ({
-                  questionId: answer.questionId,
-                  userAnswer: answer.userAnswer,
-                  correctAnswer: answer.correctAnswer,
-                  isCorrect: Boolean(answer.isCorrect),
-                })),
-                score: results.score,
-                userId: userId,
-                username: currentParticipant?.user?.name || "Anonymous",
-                totalScore: Object.keys(selectedAnswers).length,
-                deviceId: currentParticipant._id,
-                stats: {
-                  totalQuestions: results.stats.totalQuestions,
-                  correctAnswers: results.stats.correctAnswers,
-                  incorrectAnswers: results.stats.incorrectAnswers,
-                  correctPercentage: results.stats.correctPercentage,
-                },
-              }),
-            }
-          );
-
-          const data = await response.json();
-          if (!data.success) {
-            console.error("Failed to save quiz results:", data.message);
-          } else {
-            console.log("Quiz results saved successfully");
-          }
-        } catch (error) {
-          console.error("Error saving quiz results:", error);
-        }
-
-        console.log("Final results:", results); // Debug log
-
-        setQuizResults(results);
-        setSubmitted(true);
-        setShowConfirmModal(false);
-
-        // Clear saved answers and current question
-        localStorage.removeItem(`quiz_answers_${code}`);
-        localStorage.removeItem(`quiz_current_question_${code}`);
-        // Save submission state and results
-        localStorage.setItem(`quiz_submitted_${code}`, "true");
-        localStorage.setItem(`quiz_results_${code}`, JSON.stringify(results));
+        currentParticipant = userId;
       }
+
+      console.log("Proceeding with submission using participant:", {
+        participantId: userId,
+        userId: user.id,
+        name: user.fullName,
+      });
+
+      // Calculate results before submitting
+      const results: QuizResults = {
+        score: Object.entries(selectedAnswers).reduce(
+          (total, [questionId, answer]) => {
+            const question = questions.find((q) => q._id === questionId);
+            const isCorrect =
+              question?.answers.find((a) => a.isCorrect)?.text === answer;
+            return total + (isCorrect ? 1 : 0);
+          },
+          0
+        ),
+        stats: {
+          totalQuestions: questions.length,
+          correctAnswers: Object.entries(selectedAnswers).filter(
+            ([questionId, answer]) => {
+              const question = questions.find((q) => q._id === questionId);
+              return (
+                question?.answers.find((a) => a.isCorrect)?.text === answer
+              );
+            }
+          ).length,
+          incorrectAnswers: Object.entries(selectedAnswers).filter(
+            ([questionId, answer]) => {
+              const question = questions.find((q) => q._id === questionId);
+              return (
+                question?.answers.find((a) => a.isCorrect)?.text !== answer
+              );
+            }
+          ).length,
+          correctPercentage: 0,
+        },
+      };
+
+      results.stats.correctPercentage = Math.round(
+        (results.stats.correctAnswers / results.stats.totalQuestions) * 100
+      );
+
+      // Prepare answers array for submission
+      const answersArray = Object.entries(selectedAnswers).map(
+        ([questionId, answer]) => {
+          const question = questions.find((q) => q._id === questionId);
+          const correctAnswer =
+            question?.answers.find((a) => a.isCorrect)?.text ||
+            "Không xác định";
+          return {
+            questionId,
+            userAnswer: answer,
+            correctAnswer,
+            isCorrect: answer === correctAnswer,
+          };
+        }
+      );
+
+      // Emit endSession event to server
+      await new Promise<void>((resolve, reject) => {
+        socket.emit(
+          "endSession",
+          {
+            roomId: room._id,
+            participantId: userId,
+            results: {
+              score: results.score,
+              totalQuestions: results.stats.totalQuestions,
+              answers: answersArray,
+            },
+          },
+          (response: SocketResponse) => {
+            if (response.success) {
+              resolve();
+            } else {
+              reject(
+                new Error(
+                  response.message || "Không thể kết thúc phiên làm bài"
+                )
+              );
+            }
+          }
+        );
+      });
+
+      // Save results to database
+      const token = await getToken();
+      const response = await fetch("http://localhost:5000/api/quiz/results", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          examSetId: room.examSetId,
+          userAnswers: answersArray,
+          score: results.score,
+          userId: userId,
+          username: user.fullName || "Anonymous",
+          totalScore: questions.length,
+          deviceId: userId,
+          stats: results.stats,
+        }),
+      });
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || "Lỗi khi lưu kết quả");
+      }
+
+      // Update local state
+      setQuizResults({
+        ...results,
+        answers: answersArray,
+      });
+      setSubmitted(true);
+      setShowConfirmModal(false);
+
+      // Clear saved answers and current question
+      localStorage.removeItem(`quiz_answers_${code}`);
+      localStorage.removeItem(`quiz_current_question_${code}`);
+
+      // Save submission state and results
+      localStorage.setItem(`quiz_submitted_${code}`, "true");
+      localStorage.setItem(
+        `quiz_results_${code}`,
+        JSON.stringify({
+          ...results,
+          answers: answersArray,
+        })
+      );
+
+      // Leave room
+      socket.emit("leaveRoom", {
+        roomId: room._id,
+        participantId: userId,
+      });
     } catch (error) {
       console.error("Error submitting answers:", error);
-      // Don't show error alert for auto-submit
-      if (!submitted) {
-        alert(
-          error instanceof Error
-            ? error.message
-            : "Có lỗi xảy ra khi nộp bài. Vui lòng thử lại."
-        );
-      }
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Có lỗi xảy ra khi nộp bài. Vui lòng thử lại."
+      );
+      setShowConfirmModal(false);
     }
   }, [
     room,
     selectedAnswers,
     userId,
+    user,
     socket,
     questions,
     code,
@@ -726,15 +685,10 @@ export default function JoinRoomForStudent() {
             handleConfirm();
           }
         }, timeUntilEnd);
-
         return () => clearTimeout(timeoutId);
       }
     }
   }, [room, submitted, handleConfirm]);
-
-  useEffect(() => {
-    getRoom();
-  }, [getRoom]);
 
   useEffect(() => {
     if (room?.status === "scheduled" || room?.status === "active") {
@@ -1368,223 +1322,7 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  // if (room?.status === "completed") {
-  //   return (
-  //     <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
-  //       <div className="text-xl p-8 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg flex flex-col items-center">
-  //         <svg
-  //           className="w-16 h-16 text-orange mb-4"
-  //           fill="none"
-  //           stroke="currentColor"
-  //           viewBox="0 0 24 24"
-  //         >
-  //           <path
-  //             strokeLinecap="round"
-  //             strokeLinejoin="round"
-  //             strokeWidth="2"
-  //             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-  //           />
-  //         </svg>
-  //         <p className="text-center">Bài kiểm tra đã kết thúc</p>
-  //         <button
-  //           onClick={() => navigate("/dashboard")}
-  //           className="mt-6 px-6 py-3 bg-orange text-darkblue rounded-lg font-semibold hover:bg-amber-500 transition-colors"
-  //         >
-  //           Quay lại trang chủ
-  //         </button>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
-  // Extracted component for quiz results modal
-  if (submitted && quizResults) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background">
-        <div className="bg-black/50 backdrop-blur-sm rounded-3xl p-8 max-w-4xl w-full mx-4 shadow-2xl transform transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-4xl font-bold text-white">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
-                Kết quả
-              </span>{" "}
-              bài thi
-            </h2>
-            <HugeiconsIcon icon={ChampionIcon} />
-          </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-rgba p-6 rounded-xl shadow-lg hover:shadow-indigo-900/20 transition-all">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-background font-medium">Điểm số</p>
-                <HugeiconsIcon icon={Chart02Icon} />
-              </div>
-              <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange to-red-wine">
-                {quizResults.score}/{quizResults.stats.totalQuestions}
-              </p>
-            </div>
-
-            <div className="bg-rgba col-span-2 p-6 rounded-xl transition-all">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-background font-medium">Tỷ lệ đúng</p>
-                <div className="bg-orange text-darkblue text-xs font-bold px-2 py-1 rounded-full">
-                  {quizResults.stats.correctPercentage}%
-                </div>
-              </div>
-              <div className="w-full bg-gray-500 rounded-full h-3 mt-2">
-                <div
-                  className="bg-gradient-to-r from-orange to-red-wine h-3 rounded-full"
-                  style={{ width: `${quizResults.stats.correctPercentage}%` }}
-                />
-              </div>
-              <p className="text-xl font-medium text-orange mt-2">
-                {quizResults.stats.correctAnswers}/
-                {quizResults.stats.totalQuestions} câu đúng
-              </p>
-            </div>
-          </div>
-
-          {/* Answers Section */}
-          <div className="mb-8">
-            <button
-              onClick={() => setShowDetails(!showDetails)}
-              className="flex items-center justify-between w-full py-4 px-6 bg-rgba rounded-xl transition mb-4"
-            >
-              <div className="flex items-center">
-                <h3 className="text-xl font-semibold text-background">
-                  Chi tiết câu trả lời
-                </h3>
-                <span className="ml-3 bg-background px-2 py-1 rounded-lg text-sm text-darkblue">
-                  {quizResults.answers.length} câu hỏi
-                </span>
-              </div>
-              {showDetails ? (
-                <HugeiconsIcon icon={ArrowUp01Icon} />
-              ) : (
-                <HugeiconsIcon icon={ArrowDown01Icon} />
-              )}
-            </button>
-
-            {showDetails && (
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar transition-all">
-                {quizResults.answers.map((answer, index) => (
-                  <div
-                    key={index}
-                    className={`p-5 rounded-xl border ${
-                      answer.isCorrect
-                        ? "bg-green-950/50 border-green-700/50 shadow-md shadow-green-900/20"
-                        : "bg-red-950/50 border-red-700/50 shadow-md shadow-red-900/20"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="font-medium text-lg text-cyan-100">
-                        Câu {index + 1}
-                      </p>
-                      {answer.isCorrect ? (
-                        <div className="flex items-center text-emerald-400">
-                          <HugeiconsIcon icon={CheckmarkCircle02Icon} />
-                          <span className="text-sm font-medium">Đúng</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center text-rose-400">
-                          <HugeiconsIcon icon={Cancel01Icon} />
-                          <span className="text-sm font-medium">Sai</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-cyan-100 mb-3">{answer.question}</p>
-
-                    <div className="space-y-2 ml-2">
-                      <p className="text-sm flex items-center">
-                        <span
-                          className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                            answer.userAnswer === answer.correctAnswer
-                              ? "bg-emerald-400"
-                              : "bg-rose-400"
-                          }`}
-                        ></span>
-                        <span className="text-cyan-300">Đáp án của bạn:</span>
-                        <span className="ml-1 font-medium text-white">
-                          {answer.userAnswer}
-                        </span>
-                      </p>
-
-                      {!answer.isCorrect && (
-                        <p className="text-sm flex items-center">
-                          <span className="inline-block w-3 h-3 rounded-full mr-2 bg-emerald-400"></span>
-                          <span className="text-cyan-300">Đáp án đúng:</span>
-                          <span className="ml-1 font-medium text-white">
-                            {answer.correctAnswer}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-between">
-            <button
-              onClick={() => navigate("/dashboard/home")}
-              className="flex items-center px-5 py-3 bg-background text-darkblue rounded-xl font-medium btn-hover"
-            >
-              <HugeiconsIcon icon={Backward01Icon} />
-              <span className="ml-2">Quay lại trang chủ</span>
-            </button>
-
-            <button
-              onClick={() => navigate("/dashboard/activity")}
-              className="px-6 py-3  bg-orange text-darkblue rounded-xl font-semibold btn-hover"
-            >
-              Đến trang hoạt động
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Component for "Quiz completed" screen
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-950 via-indigo-950 to-purple-950 text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 bg-indigo-900/40 backdrop-blur-md rounded-2xl shadow-2xl border border-indigo-700/40 flex flex-col items-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-purple-900/30">
-            <HugeiconsIcon icon={CheckmarkCircle02Icon} />
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2 text-cyan-100">
-            Bài thi hoàn thành!
-          </h2>
-          <p className="text-cyan-200 text-center mb-8">
-            Kết quả của bạn đã được lưu. Bạn có thể xem chi tiết tại trang cá
-            nhân.
-          </p>
-
-          <div className="w-full space-y-3">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-semibold hover:opacity-90 transition-colors shadow-lg shadow-purple-900/30"
-            >
-              Quay lại trang chủ
-            </button>
-
-            <button
-              onClick={() => console.log("View all results")}
-              className="w-full py-3 bg-indigo-800/60 text-cyan-100 rounded-xl font-medium hover:bg-indigo-700/60 transition-colors border border-indigo-700/40"
-            >
-              Xem tất cả kết quả
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (!showQuestions) {
+  if (!showQuestions && !submitted) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full ">
         <main className="flex flex-col justify-center items-center">
@@ -1718,6 +1456,65 @@ export default function JoinRoomForStudent() {
             </div>
           </div>
         </main>
+      </div>
+    );
+  }
+
+  if (submitted && quizResults) {
+    return (
+      <QuizResults
+        score={quizResults?.score || 0}
+        totalQuestions={quizResults?.stats.totalQuestions || 0}
+        stats={quizResults?.stats || {}}
+        answers={quizResults?.answers.map((answer) => ({
+          ...answer,
+          question:
+            questions.find((q) => q._id === answer.questionId)?.questionText ||
+            "Câu hỏi không có sẵn",
+        }))}
+        questions={questions
+          .filter((q): q is Question & { _id: string } => q._id !== undefined)
+          .map((q) => ({
+            _id: q._id as string,
+            questionText: q.questionText,
+            answers: q.answers,
+          }))}
+      />
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-950 via-indigo-950 to-purple-950 text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full p-8 bg-indigo-900/40 backdrop-blur-md rounded-2xl shadow-2xl border border-indigo-700/40 flex flex-col items-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-purple-900/30">
+            <HugeiconsIcon icon={CheckmarkCircle02Icon} />
+          </div>
+
+          <h2 className="text-2xl font-bold mb-2 text-cyan-100">
+            Bài thi hoàn thành!
+          </h2>
+          <p className="text-cyan-200 text-center mb-8">
+            Kết quả của bạn đã được lưu. Bạn có thể xem chi tiết tại trang cá
+            nhân.
+          </p>
+
+          <div className="w-full space-y-3">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-semibold hover:opacity-90 transition-colors shadow-lg shadow-purple-900/30"
+            >
+              Quay lại trang chủ
+            </button>
+
+            <button
+              onClick={() => console.log("View all results")}
+              className="w-full py-3 bg-indigo-800/60 text-cyan-100 rounded-xl font-medium hover:bg-indigo-700/60 transition-colors border border-indigo-700/40"
+            >
+              Xem tất cả kết quả
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
