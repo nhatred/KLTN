@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import SelectQuizModal from "./SelectQuizModal";
+import SelectQuizForRoomModal from "./SelectQuizForRoomModal";
 
 export default function Navbar() {
   const { openSignIn } = useClerk();
@@ -185,7 +186,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <SelectQuizModal
+      <SelectQuizForRoomModal
         isOpen={isSelectQuizModalOpen}
         onClose={() => setIsSelectQuizModalOpen(false)}
       />

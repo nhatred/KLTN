@@ -1,7 +1,7 @@
 import Participant from "../models/Participant.js";
 import QuizRoom from "../models/QuizRoom.js";
 import Question from "../models/Question.js";
-import ExamSet from "../models/ExamSet.js";
+import Quiz from "../models/Quiz.js";
 import fetch from "node-fetch";
 
 // Tham gia phong thi
@@ -16,8 +16,13 @@ async function joinRoom(socket, data) {
       temporaryUsername,
     });
 
-    // Tìm phòng thi
-    const room = await QuizRoom.findOne({ roomCode });
+    // Tìm phòng thi và populate quiz với questions
+    const room = await QuizRoom.findOne({ roomCode }).populate({
+      path: "quiz",
+      populate: {
+        path: "questions",
+      },
+    });
 
     if (!room) {
       throw new Error("Phòng thi không tồn tại");
@@ -25,22 +30,31 @@ async function joinRoom(socket, data) {
 
     console.log("Found room:", {
       roomId: room._id,
-      examSetId: room.examSetId,
+      roomCode: room.roomCode,
       status: room.status,
+      quiz: room.quiz,
+      id: room.id,
     });
 
-    // Tìm bài thi
-    console.log("Searching for exam set with ID:", room.examSetId);
-    const examSet = await ExamSet.findById(room.examSetId);
-    console.log("ExamSet search result:", examSet ? "Found" : "Not found");
-
-    if (!examSet) {
-      throw new Error("Không tìm thấy bài thi");
+    // Kiểm tra quiz từ room đã được populate
+    if (!room.quiz) {
+      console.log("Quiz not found in room, trying to find quiz directly");
+      // Thử tìm quiz trực tiếp từ id của room
+      const quiz = await Quiz.findById(room.id);
+      if (!quiz) {
+        console.log(
+          "Quiz still not found. Room details:",
+          JSON.stringify(room, null, 2)
+        );
+        throw new Error("Không tìm thấy bài thi");
+      }
+      room.quiz = quiz;
     }
 
-    console.log("Found exam set:", {
-      examSetId: examSet._id,
-      questionsCount: examSet.questions?.length,
+    console.log("Found quiz:", {
+      quizId: room.quiz._id,
+      questionsCount: room.quiz.questions?.length,
+      questions: room.quiz.questions,
     });
 
     // Kiểm tra người dùng đã tham gia chưa
@@ -61,14 +75,14 @@ async function joinRoom(socket, data) {
     // Tạo mới nếu chưa tham gia
     if (!participant) {
       // Xáo trộn câu hỏi
-      const shuffledQuestions = [...examSet.questions].sort(
+      const shuffledQuestions = [...room.quiz.questions].sort(
         () => 0.5 - Math.random()
       );
 
       // Tạo participant mới với đầy đủ thông tin
       const participantData = {
         quizRoom: room._id,
-        quiz: examSet._id, // Sử dụng examSet._id thay vì quiz._id
+        quiz: room.quiz._id,
         user: userId || "anonymous",
         temporaryUsername,
         isLoggedIn: !!userId,
@@ -80,7 +94,7 @@ async function joinRoom(socket, data) {
 
       console.log("Creating new participant with data:", {
         ...participantData,
-        examSetId: participantData.quiz?.toString(),
+        quizId: participantData.quiz?.toString(),
         quizRoomId: participantData.quizRoom?.toString(),
         userId: participantData.user,
       });
@@ -90,7 +104,7 @@ async function joinRoom(socket, data) {
         participant = await Participant.create(participantData);
         console.log("Participant created successfully:", {
           participantId: participant._id,
-          examSetId: participant.quiz?.toString(),
+          quizId: participant.quiz?.toString(),
           quizRoomId: participant.quizRoom?.toString(),
           userId: participant.user,
         });
@@ -122,28 +136,41 @@ async function joinRoom(socket, data) {
       (q) => q.questionId
     );
 
-    // Lấy thông tin user từ Clerk
-    const clerkApiUrl = process.env.CLERK_API_URL || "https://api.clerk.com/v1";
-    const userResponse = await fetch(`${clerkApiUrl}/users/${userId}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-      },
-    });
+    let userInfo = {
+      _id: userId || "anonymous",
+      name: temporaryUsername || "Anonymous",
+      imageUrl:
+        "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+    };
 
-    if (!userResponse.ok) {
-      throw new Error("Failed to fetch user data from Clerk");
+    // Lấy thông tin user từ Clerk nếu có userId
+    if (userId && userId !== "anonymous") {
+      try {
+        const clerkApiUrl =
+          process.env.CLERK_API_URL || "https://api.clerk.com/v1";
+        const userResponse = await fetch(`${clerkApiUrl}/users/${userId}`, {
+          headers: {
+            Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+          },
+        });
+
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          userInfo = {
+            _id: userId,
+            name: `${userData.first_name} ${userData.last_name}`,
+            imageUrl: userData.image_url,
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching user data from Clerk:", error);
+      }
     }
-
-    const userData = await userResponse.json();
 
     // Thêm thông tin user vào participant
     participant = {
       ...participant.toObject(),
-      user: {
-        _id: userId,
-        name: userData.first_name + " " + userData.last_name,
-        imageUrl: userData.image_url,
-      },
+      user: userInfo,
     };
 
     console.log("=== END JOIN ROOM ===");
@@ -156,7 +183,7 @@ async function joinRoom(socket, data) {
       timeRemaining: room.timeRemaining,
       progress: {
         answered: participant.answeredQuestions.length,
-        total: examSet.questions.length,
+        total: room.quiz.questions.length,
       },
     };
   } catch (error) {

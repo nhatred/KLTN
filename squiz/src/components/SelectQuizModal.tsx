@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth, useClerk } from "@clerk/clerk-react";
-import { useNavigate } from "react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Book01Icon, SearchAreaIcon } from "@hugeicons/core-free-icons";
+import { SearchAreaIcon } from "@hugeicons/core-free-icons";
 import axios from "axios";
 
 interface ExamSet {
@@ -21,11 +20,22 @@ interface Section {
 interface SelectQuizModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onAddQuestions: (
+    questionBankQueries: Array<{
+      questionBankId: string;
+      difficulty: string[];
+      limit: number;
+    }>,
+    examName: string
+  ) => void;
+  selectedBankIds?: string[];
 }
 
 const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
   isOpen,
   onClose,
+  onAddQuestions,
+  selectedBankIds = [],
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExam, setSelectedExam] = useState<ExamSet | null>(null);
@@ -36,13 +46,24 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
   ]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [examSets, setExamSets] = useState<ExamSet[]>([]);
-  const { userId } = useAuth();
+  const [isTotalMode, setIsTotalMode] = useState(false);
   const { session } = useClerk();
-  const navigate = useNavigate();
+
+  const availableExamSets = examSets.filter(
+    (exam) => !selectedBankIds.includes(exam._id)
+  );
 
   useEffect(() => {
     if (isOpen) {
       fetchExamSets();
+      setSelectedExam(null);
+      setTotalQuestions(0);
+      setSections([
+        { difficulty: "easy", numberOfQuestions: 0 },
+        { difficulty: "medium", numberOfQuestions: 0 },
+        { difficulty: "hard", numberOfQuestions: 0 },
+      ]);
+      setIsTotalMode(false);
     }
   }, [isOpen]);
 
@@ -74,33 +95,43 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
     );
   };
 
-  const handleCreateRoom = async () => {
+  const handleTotalQuestionsChange = (value: number) => {
+    setTotalQuestions(value);
+  };
+
+  const handleAddQuestions = () => {
     if (!selectedExam) {
       alert("Vui lòng chọn đề thi");
       return;
     }
 
     if (totalQuestions === 0) {
-      alert("Vui lòng nhập số câu hỏi cho mỗi phần");
+      alert("Vui lòng nhập số câu hỏi");
       return;
     }
 
-    try {
-      const token = await session?.getToken();
-      if (!token) {
-        alert("Vui lòng đăng nhập để tạo phòng thi");
-        return;
-      }
+    let questionBankQueries;
 
-      // Chuyển hướng đến trang tạo phòng với examId
-      navigate(
-        `/create-room/${selectedExam._id}?sections=${JSON.stringify(sections)}`
-      );
-      onClose();
-    } catch (error) {
-      console.error("Error creating room:", error);
-      alert("Có lỗi xảy ra khi tạo phòng thi");
+    if (isTotalMode) {
+      questionBankQueries = [
+        {
+          questionBankId: selectedExam._id,
+          difficulty: ["easy", "medium", "hard", "total"],
+          limit: totalQuestions,
+        },
+      ];
+    } else {
+      questionBankQueries = sections
+        .filter((section) => section.numberOfQuestions > 0)
+        .map((section) => ({
+          questionBankId: selectedExam._id,
+          difficulty: [section.difficulty],
+          limit: section.numberOfQuestions,
+        }));
     }
+
+    onAddQuestions(questionBankQueries, selectedExam.name);
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -109,7 +140,9 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Chọn đề thi</h2>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Chọn đề thi từ ngân hàng đề
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -118,7 +151,6 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
           </button>
         </div>
 
-        {/* Search */}
         <div className="mb-6">
           <div className="relative">
             <HugeiconsIcon
@@ -135,11 +167,9 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
           </div>
         </div>
 
-        {/* Content */}
         <div className="space-y-6">
-          {/* Exam List */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-            {examSets
+            {availableExamSets
               .filter((exam) =>
                 exam.name.toLowerCase().includes(searchTerm.toLowerCase())
               )
@@ -164,45 +194,87 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
                   </div>
                 </div>
               ))}
+            {availableExamSets.length === 0 && (
+              <div className="col-span-2 text-center py-8 text-gray-500">
+                {searchTerm ? (
+                  <p>Không tìm thấy đề thi phù hợp</p>
+                ) : (
+                  <p>Tất cả đề thi đã được chọn</p>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Section Configuration */}
           <div className="border-t pt-6">
-            <h3 className="text-lg font-semibold mb-4">Cấu hình số câu hỏi</h3>
-            <div className="space-y-4">
-              {sections.map((section, index) => (
-                <div
-                  key={section.difficulty}
-                  className="flex items-center gap-4"
-                >
-                  <label className="w-32 text-sm font-medium">
-                    {section.difficulty === "easy"
-                      ? "Dễ"
-                      : section.difficulty === "medium"
-                      ? "Trung bình"
-                      : "Khó"}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={section.numberOfQuestions}
-                    onChange={(e) =>
-                      handleSectionChange(index, parseInt(e.target.value) || 0)
-                    }
-                    className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange focus:border-transparent"
-                  />
-                  <span className="text-sm text-gray-500">câu hỏi</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-4 mt-4">
-                <span className="w-32 text-sm font-medium">Tổng số câu:</span>
-                <span className="text-lg font-semibold">{totalQuestions}</span>
+            <div className="flex items-center gap-4 mb-4">
+              <h3 className="text-lg font-semibold">Cấu hình số câu hỏi</h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="totalMode"
+                  checked={isTotalMode}
+                  onChange={(e) => setIsTotalMode(e.target.checked)}
+                  className="form-checkbox h-4 w-4 text-orange"
+                />
+                <label htmlFor="totalMode" className="text-sm">
+                  Chọn theo tổng số câu
+                </label>
               </div>
+            </div>
+
+            {isTotalMode ? (
+              <div className="flex items-center gap-4">
+                <label className="w-32 text-sm font-medium">Tổng số câu:</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={totalQuestions}
+                  onChange={(e) =>
+                    handleTotalQuestionsChange(parseInt(e.target.value) || 0)
+                  }
+                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange focus:border-transparent"
+                />
+                <span className="text-sm text-gray-500">câu hỏi</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {sections.map((section, index) => (
+                  <div
+                    key={section.difficulty}
+                    className="flex items-center gap-4"
+                  >
+                    <label className="w-32 text-sm font-medium">
+                      {section.difficulty === "easy"
+                        ? "Dễ"
+                        : section.difficulty === "medium"
+                        ? "Trung bình"
+                        : "Khó"}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={section.numberOfQuestions}
+                      onChange={(e) =>
+                        handleSectionChange(
+                          index,
+                          parseInt(e.target.value) || 0
+                        )
+                      }
+                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange focus:border-transparent"
+                    />
+                    <span className="text-sm text-gray-500">câu hỏi</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-4 mt-4">
+              <span className="w-32 text-sm font-medium">Tổng số câu:</span>
+              <span className="text-lg font-semibold">{totalQuestions}</span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
           <button
             onClick={onClose}
@@ -211,10 +283,10 @@ const SelectQuizModal: React.FC<SelectQuizModalProps> = ({
             Hủy
           </button>
           <button
-            onClick={handleCreateRoom}
+            onClick={handleAddQuestions}
             className="px-4 py-2 bg-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
           >
-            Tạo phòng
+            Thêm
           </button>
         </div>
       </div>

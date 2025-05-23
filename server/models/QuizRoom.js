@@ -14,11 +14,6 @@ const quizRoomSchema = new mongoose.Schema(
       },
     },
     quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
-    examSetId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "ExamSet",
-      required: true,
-    },
     host: { type: String, ref: "User", required: true },
     startTime: { type: Date },
     isActive: { type: Boolean, default: false },

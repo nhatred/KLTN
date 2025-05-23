@@ -23,6 +23,7 @@ import {
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import imageCompression from "browser-image-compression";
+import SelectQuizModal from "../components/SelectQuizModal";
 
 const QUESTION_TYPES = {
   MULTIPLE_CHOICE: "multipleChoices",
@@ -51,6 +52,8 @@ export default function CreateQuiz() {
     setIsModal((preVal) => !preVal);
   };
 
+  const [isSelectQuizModalOpen, setIsSelectQuizModalOpen] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -62,12 +65,14 @@ export default function CreateQuiz() {
   const [isFormQuestion, setIsFormQuestion] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExam, setIsExam] = useState(false);
   const [quizData, setQuizData] = useState({
     creator: "",
     name: "",
     topic: "",
     difficulty: "",
     isPublic: "public",
+    isExam: false,
     questions: [{}],
     imageUrl: null,
   });
@@ -80,10 +85,27 @@ export default function CreateQuiz() {
   });
 
   const [questionsIsVoid, setQuestionsIsVoid] = useState(false);
+  const [selectedQuestionBanks, setSelectedQuestionBanks] = useState<
+    Array<{
+      questionBankId: string;
+      name: string;
+      sections: Array<{
+        difficulty: string;
+        numberOfQuestions: number;
+      }>;
+    }>
+  >([]);
+
+  const selectedBankIds = selectedQuestionBanks.map(
+    (bank) => bank.questionBankId
+  );
 
   useEffect(() => {
-    setQuestionsIsVoid(questions.length < 1);
-  }, [questions]);
+    setQuestionsIsVoid(
+      questions.length < 1 && selectedQuestionBanks.length < 1
+    );
+    setIsExam(selectedQuestionBanks.length > 0);
+  }, [questions, selectedQuestionBanks]);
 
   useEffect(() => {
     setQuestions((prevQuestions) =>
@@ -119,8 +141,10 @@ export default function CreateQuiz() {
       quizId: "",
       questionType: questionTypeMapping[data.questionType] || data.questionType,
       questionText: data.questionText,
-      timePerQuestion: Number(data.timePerQuestion) || quizOptions.timePerQuestion,
-      scorePerQuestion: Number(data.scorePerQuestion) || quizOptions.scorePerQuestion,
+      timePerQuestion:
+        Number(data.timePerQuestion) || quizOptions.timePerQuestion,
+      scorePerQuestion:
+        Number(data.scorePerQuestion) || quizOptions.scorePerQuestion,
       difficulty: data.difficulty,
       answers: data.answers,
     };
@@ -128,7 +152,10 @@ export default function CreateQuiz() {
   };
 
   // UPDATE CAU HOI
-  const handleQuestionUpdate = (e: React.ChangeEvent<HTMLSelectElement>, questionId: number | string) => {
+  const handleQuestionUpdate = (
+    e: React.ChangeEvent<HTMLSelectElement>,
+    questionId: number | string
+  ) => {
     const { name, value } = e.target;
 
     setQuestions((prevQuestions: Question[]) =>
@@ -150,7 +177,10 @@ export default function CreateQuiz() {
       questionId: Date.now(),
     };
 
-    setQuestions((prevQuestions: Question[]) => [...prevQuestions, duplicatedQuestion]);
+    setQuestions((prevQuestions: Question[]) => [
+      ...prevQuestions,
+      duplicatedQuestion,
+    ]);
   };
 
   // XOA CAU HOI
@@ -173,26 +203,30 @@ export default function CreateQuiz() {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       setIsUploading(true);
-      
+
       try {
         // Kiểm tra kích thước file
-        if (file.size > 3 * 1024 * 1024) { 
+        if (file.size > 3 * 1024 * 1024) {
           const options = {
-            maxSizeMB: 1, 
-            maxWidthOrHeight: 1920, 
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
             useWebWorker: true, // Tăng hiệu suất
           };
 
           const compressedFile = await imageCompression(file, options);
-          console.log('Original file size:', file.size / 1024 / 1024, 'MB');
-          console.log('Compressed file size:', compressedFile.size / 1024 / 1024, 'MB');
+          console.log("Original file size:", file.size / 1024 / 1024, "MB");
+          console.log(
+            "Compressed file size:",
+            compressedFile.size / 1024 / 1024,
+            "MB"
+          );
           setImageData(compressedFile);
         } else {
           // Nếu file nhỏ hơn 2MB, sử dụng trực tiếp
           setImageData(file);
         }
       } catch (error) {
-        console.error('Error compressing image:', error);
+        console.error("Error compressing image:", error);
       } finally {
         setIsUploading(false);
       }
@@ -215,26 +249,73 @@ export default function CreateQuiz() {
 
   // Save
   const handleSaveQuiz = async () => {
-    if (questions.length < 1) {
+    if (questions.length < 1 && selectedQuestionBanks.length < 1) {
       setQuestionsIsVoid(true);
       return;
     }
     try {
       setIsSaving(true);
       const token = await getToken();
+
+      // Prepare question bank queries
+      const questionBankQueries = selectedQuestionBanks.flatMap((bank) => {
+        // Kiểm tra nếu có section với difficulty là "total"
+        const totalSection = bank.sections.find(
+          (section) => section.difficulty === "total"
+        );
+
+        if (totalSection) {
+          // Nếu là chế độ tổng số câu
+          return [
+            {
+              questionBankId: bank.questionBankId,
+              difficulty: ["easy", "medium", "hard", "total"],
+              limit: totalSection.numberOfQuestions,
+            },
+          ];
+        } else {
+          // Nếu là chế độ chọn theo mức độ
+          return bank.sections
+            .filter((section) => section.numberOfQuestions > 0)
+            .map((section) => ({
+              questionBankId: bank.questionBankId,
+              difficulty: [section.difficulty],
+              limit: section.numberOfQuestions,
+            }));
+        }
+      });
+
       const formData = new FormData();
       formData.append("creator", user?.id || "");
-      formData.append("creatorInfo", JSON.stringify({
-        name: user?.fullName,
-        avatar: user?.imageUrl,
-      }));
+      formData.append(
+        "creatorInfo",
+        JSON.stringify({
+          name: user?.fullName,
+          avatar: user?.imageUrl,
+        })
+      );
       formData.append("name", quizData.name);
       formData.append("topic", quizData.topic);
       formData.append("difficulty", quizData.difficulty);
       formData.append("isPublic", quizData.isPublic);
       formData.append("imageUrl", imageData || "");
+      formData.append("isExam", isExam.toString());
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
+
+      // Thêm questionBankQueries vào formData nếu có
+      if (selectedQuestionBanks.length > 0) {
+        formData.append(
+          "questionBankQueries",
+          JSON.stringify(questionBankQueries)
+        );
+      }
+
+      console.log("Sending quiz data:", {
+        ...Object.fromEntries(formData.entries()),
+        questionBankQueries: questionBankQueries,
+      });
+
       const response = await fetch(`${API_BASE_URL}/quiz`, {
         method: "POST",
         headers: {
@@ -245,23 +326,25 @@ export default function CreateQuiz() {
 
       const quizResult = await response.json();
       if (!quizResult.success) {
-        throw new Error(quizResult.message || "Cannot created new Quiz");
+        throw new Error(quizResult.message || "Cannot create new Quiz");
       }
 
-      const updatedQuestions = questions.map((question) => ({
-        ...question,
-        quizId: quizResult._id,
-      }));
-      const saveResult = await handleSaveQuestion(updatedQuestions);
-      
-      if (saveResult.success) {
-        // Add a small delay before navigation
-        setTimeout(() => {
-          navigate("/dashboard/home", { replace: true });
-        }, 500);
-      } else {
-        throw new Error(saveResult.message || "Failed to save questions");
+      if (questions.length > 0) {
+        const updatedQuestions = questions.map((question) => ({
+          ...question,
+          quizId: quizResult._id,
+        }));
+        const saveResult = await handleSaveQuestion(updatedQuestions);
+
+        if (!saveResult.success) {
+          throw new Error(saveResult.message || "Failed to save questions");
+        }
       }
+
+      // Add a small delay before navigation
+      setTimeout(() => {
+        navigate("/dashboard/home", { replace: true });
+      }, 500);
     } catch (error) {
       console.error("Error saving quiz:", error);
       alert("Failed to save quiz. Please try again.");
@@ -320,6 +403,47 @@ export default function CreateQuiz() {
     }
   };
 
+  const handleAddQuestionsFromBank = async (
+    questionBankQueries: Array<{
+      questionBankId: string;
+      difficulty: string[];
+      limit: number;
+    }>,
+    examName: string
+  ) => {
+    // Add to selectedQuestionBanks
+    const sections = questionBankQueries.map((query) => {
+      // Kiểm tra nếu là chế độ tổng số câu
+      if (query.difficulty.includes("total")) {
+        return {
+          difficulty: "total",
+          numberOfQuestions: query.limit,
+        };
+      }
+      // Nếu là chế độ chọn theo mức độ
+      return {
+        difficulty: query.difficulty[0],
+        numberOfQuestions: query.limit,
+      };
+    });
+
+    setSelectedQuestionBanks((prev) => [
+      ...prev,
+      {
+        questionBankId: questionBankQueries[0].questionBankId,
+        name: examName,
+        sections,
+      },
+    ]);
+  };
+
+  // Add function to remove question bank
+  const removeQuestionBank = (questionBankId: string) => {
+    setSelectedQuestionBanks((prev) =>
+      prev.filter((bank) => bank.questionBankId !== questionBankId)
+    );
+  };
+
   return (
     <div className="container mx-auto px-10">
       <form
@@ -329,7 +453,7 @@ export default function CreateQuiz() {
       >
         <nav className="h-16 fixed left-0 right-0 border-b-1 z-10 bg-background py-2 px-4 flex justify-between items-center">
           <div className="flex items-center gap-5">
-            <div 
+            <div
               onClick={() => navigate(-1)}
               className="cursor-pointer flex items-center justify-center rounded font-black hover:bg-gray-100 p-2"
             >
@@ -440,7 +564,9 @@ export default function CreateQuiz() {
 
                 <label
                   htmlFor="image-upload"
-                  className={`cursor-pointer flex items-center gap-1 mt-5 mb-2 ${isUploading ? 'opacity-50' : ''}`}
+                  className={`cursor-pointer flex items-center gap-1 mt-5 mb-2 ${
+                    isUploading ? "opacity-50" : ""
+                  }`}
                 >
                   <HugeiconsIcon
                     size={30}
@@ -448,7 +574,9 @@ export default function CreateQuiz() {
                     className="text-2xl text-gray-500 hover:text-orange transition-colors"
                   />{" "}
                   <p className="text-md font-semibold">
-                    {isUploading ? 'Đang tải ảnh lên...' : 'Tải ảnh nền cho Squiz'}
+                    {isUploading
+                      ? "Đang tải ảnh lên..."
+                      : "Tải ảnh nền cho Squiz"}
                   </p>
                 </label>
               </div>
@@ -479,19 +607,73 @@ export default function CreateQuiz() {
                 <p className="text-xl">
                   {questions.length} Câu hỏi ({totalScoreOfQuiz()} điểm)
                 </p>
-                <div
-                  onClick={handleClickModal}
-                  className="flex cursor-pointer bg-darkblue btn-hover text-background items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
-                >
-                  <i className="fa-solid fa-plus"></i>
-                  <p>Câu hỏi mới</p>
+                <div className="flex gap-2">
+                  <div
+                    onClick={() => setIsSelectQuizModalOpen(true)}
+                    className="flex cursor-pointer  btn-hover border-1 border-gray-200 text-darkblue items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+                  >
+                    <i className="fa-solid fa-plus"></i>
+                    <p>Thêm câu hỏi từ ngân hàng đề</p>
+                  </div>
+                  <div
+                    onClick={handleClickModal}
+                    className="flex cursor-pointer bg-darkblue btn-hover text-background items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+                  >
+                    <i className="fa-solid fa-plus"></i>
+                    <p>Câu hỏi mới</p>
+                  </div>
                 </div>
               </div>
-              {questionsIsVoid && (
+              {questionsIsVoid && selectedQuestionBanks.length === 0 && (
                 <div className="flex justify-center border border-red-500 p-2 my-2">
                   <p className="text-red-wine text-sm font-semibold">
-                    Vui lòng nhập ít nhất 1 câu hỏi
+                    Vui lòng nhập ít nhất 1 câu hỏi hoặc chọn từ ngân hàng đề
                   </p>
+                </div>
+              )}
+
+              {selectedQuestionBanks.length > 0 && (
+                <div className="mt-5 space-y-4">
+                  <p className="text-xl font-semibold">
+                    Đề thi đã chọn từ ngân hàng
+                  </p>
+                  {selectedQuestionBanks.map((bank) => (
+                    <div
+                      key={bank.questionBankId}
+                      className="bg-white p-4 rounded-lg shadow"
+                    >
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-lg">{bank.name}</h3>
+                        <button
+                          onClick={() =>
+                            removeQuestionBank(bank.questionBankId)
+                          }
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <i className="fa-solid fa-trash"></i>
+                        </button>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {bank.sections.map((section, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 text-sm text-gray-600"
+                          >
+                            <span className="font-medium">
+                              {section.difficulty === "easy"
+                                ? "Dễ"
+                                : section.difficulty === "medium"
+                                ? "Trung bình"
+                                : section.difficulty === "hard"
+                                ? "Khó"
+                                : "Tổng số câu"}
+                            </span>
+                            <span>{section.numberOfQuestions} câu</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -521,7 +703,10 @@ export default function CreateQuiz() {
                             className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                           >
                             {TIME_OPTIONS.map((time) => (
-                              <option key={`time-${time}-${question.questionId}`} value={time}>
+                              <option
+                                key={`time-${time}-${question.questionId}`}
+                                value={time}
+                              >
                                 {time} giây
                               </option>
                             ))}
@@ -538,7 +723,10 @@ export default function CreateQuiz() {
                             className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold"
                           >
                             {SCORE_OPTIONS.map((score) => (
-                              <option key={`score-${score}-${question.questionId}`} value={score}>
+                              <option
+                                key={`score-${score}-${question.questionId}`}
+                                value={score}
+                              >
                                 {score} điểm
                               </option>
                             ))}
@@ -555,7 +743,10 @@ export default function CreateQuiz() {
                             className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-semibold"
                           >
                             {DIFFICULTY_OPTIONS.map((option) => (
-                              <option key={`difficulty-${option.value}-${question.questionId}`} value={option.value}>
+                              <option
+                                key={`difficulty-${option.value}-${question.questionId}`}
+                                value={option.value}
+                              >
                                 {option.label}
                               </option>
                             ))}
@@ -589,7 +780,10 @@ export default function CreateQuiz() {
                       <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
                       <div className="grid grid-cols-2 grid-rows-2 gap-2">
                         {question.answers.map((answer, index) => (
-                          <div key={`${question.questionId}-answer-${index}`} className="flex items-center gap-2">
+                          <div
+                            key={`${question.questionId}-answer-${index}`}
+                            className="flex items-center gap-2"
+                          >
                             {answer.isCorrect ? (
                               <HugeiconsIcon
                                 icon={Tick01Icon}
@@ -719,6 +913,12 @@ export default function CreateQuiz() {
             </div>
           </div>
         )}
+        <SelectQuizModal
+          isOpen={isSelectQuizModalOpen}
+          onClose={() => setIsSelectQuizModalOpen(false)}
+          onAddQuestions={handleAddQuestionsFromBank}
+          selectedBankIds={selectedBankIds}
+        />
       </form>
     </div>
   );

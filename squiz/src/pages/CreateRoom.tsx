@@ -19,7 +19,7 @@ import { useAuth } from "@clerk/clerk-react";
 import axios from "axios";
 
 interface Section {
-  difficulty: "easy" | "medium" | "hard";
+  difficulty: "easy" | "medium" | "hard" | "total";
   numberOfQuestions: number;
 }
 
@@ -28,7 +28,7 @@ export default function CreateRoom() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { getToken } = useAuth();
-  const [examSet, setExamSet] = useState<any>(null);
+  const [quiz, setQuiz] = useState<any>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [roomSettings, setRoomSettings] = useState({
     startTime: "",
@@ -69,38 +69,37 @@ export default function CreateRoom() {
     }));
   };
 
-  const getExamSet = async () => {
+  const getQuiz = async () => {
     try {
       const token = await getToken();
-      const response = await axios.get(
-        `http://localhost:5000/api/examSets/${id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setExamSet(response.data);
+      const response = await axios.get(`http://localhost:5000/api/quiz/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      console.log("RÉS", response.data);
+      setQuiz(response.data);
     } catch (error) {
       console.error("Error fetching exam set:", error);
     }
   };
 
   useEffect(() => {
-    getExamSet();
+    getQuiz();
   }, [id]);
 
   const handleCreateRoom = async () => {
     const token = await getToken();
     try {
       const requestBody = {
-        examSetId: id,
+        quizId: id,
         durationMinutes: roomSettings.totalTime,
         startTime: roomSettings.startNow
           ? new Date().toISOString()
           : roomSettings.startTime,
         sections: sections,
-        roomName: examSet?.name || "Phòng thi mới",
+        roomName: quiz?.name || "Phòng thi mới",
+        creator: quiz?.creator,
       };
 
       console.log("Sending request with body:", requestBody);
@@ -142,7 +141,7 @@ export default function CreateRoom() {
       const response = await axios.post(
         "http://localhost:5000/api/quizRooms",
         {
-          examSetId: id,
+          quizId: id,
           sections,
           durationMinutes: roomSettings.totalTime,
           startTime: roomSettings.startTime,
@@ -186,7 +185,7 @@ export default function CreateRoom() {
           <p className="text-gray-500 text-lg font-bold">|</p>
           <div className="flex items-center gap-2">
             <HugeiconsIcon icon={Quiz01Icon} />
-            <p className="font-semibold">{examSet?.name}</p>
+            <p className="font-semibold">{quiz?.name}</p>
           </div>
           <div className="flex items-center gap-2">
             <HugeiconsIcon icon={HelpSquareIcon} />

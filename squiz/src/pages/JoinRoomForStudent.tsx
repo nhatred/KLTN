@@ -358,10 +358,10 @@ export default function JoinRoomForStudent() {
           setRoom(data.data);
         }
 
-        if (data.data.examSetId) {
-          console.log("Fetching exam set with ID:", data.data.examSetId);
+        if (data.data.quiz) {
+          console.log("Fetching quiz with ID:", data.data.quiz._id);
           const quizResponse = await fetch(
-            `http://localhost:5000/api/examSets/${data.data.examSetId}`,
+            `http://localhost:5000/api/quiz/${data.data.quiz._id}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,

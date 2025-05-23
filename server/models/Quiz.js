@@ -25,6 +25,14 @@ const quizSchema = new mongoose.Schema(
     quizRatings: [
       { userId: { type: String }, rating: { type: Number, min: 1, max: 5 } },
     ],
+    questionBankQueries: [
+      {
+        questionBankId: { type: String },
+        difficulty: { type: [String] },
+        limit: { type: Number },
+      },
+    ],
+    isExam: { type: Boolean, default: false },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

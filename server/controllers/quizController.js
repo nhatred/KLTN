@@ -12,11 +12,25 @@ async function createQuiz(req, res) {
     const userId = req.auth.userId;
     const quizData = req.body;
     const imageFile = req.file;
+
     // Cần Thêm chức năng giảm kích thước hình ảnh (Ảnh lớn hơn 20mb sẽ lỗi)
     if (!imageFile) {
       return res.json({ success: false, message: "Image Quiz not attached" });
     }
     quizData.creator = userId;
+
+    // Parse questionBankQueries từ FormData nếu có
+    if (quizData.questionBankQueries) {
+      try {
+        quizData.questionBankQueries = JSON.parse(quizData.questionBankQueries);
+      } catch (error) {
+        console.log("Error parsing questionBankQueries:", error);
+        return res.json({
+          success: false,
+          message: "Invalid questionBankQueries format",
+        });
+      }
+    }
 
     try {
       try {
@@ -32,6 +46,14 @@ async function createQuiz(req, res) {
           message: "Error uploading image: " + cloudinaryError.message,
         });
       }
+
+      console.log("Creating quiz with data:", {
+        ...quizData,
+        questionBankQueries: quizData.questionBankQueries
+          ? `${quizData.questionBankQueries.length} queries`
+          : "none",
+      });
+
       const newQuiz = await Quiz.create(quizData);
       res.json({
         success: true,
@@ -40,6 +62,10 @@ async function createQuiz(req, res) {
       });
     } catch (error) {
       console.log("Error Create New Quiz" + error);
+      return res.json({
+        success: false,
+        message: "Error creating quiz: " + error.message,
+      });
     }
   } catch (error) {
     res.json({ success: false, message: error.message });

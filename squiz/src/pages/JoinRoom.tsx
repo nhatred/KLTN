@@ -255,15 +255,25 @@ export default function JoinRoom() {
       });
 
       const data = await response.json();
-      if (data.success) {
-        console.log("Full room data:", data.data);
-        console.log("Participants data:", data.data.participants);
-        setRoom(data.data);
-      } else {
-        throw new Error(data.message || "Không thể tải dữ liệu phòng");
+      console.log("Server response:", data);
+
+      if (!response.ok) {
+        throw new Error(data.message || "Lỗi khi lấy thông tin phòng");
       }
-    } catch (err) {
+
+      if (!data.success) {
+        throw new Error(data.message || "Lỗi khi lấy thông tin phòng");
+      }
+
+      console.log("Full room data:", data.data);
+      console.log("Participants data:", data.data.participants);
+      setRoom(data.data);
+    } catch (err: any) {
       console.error("Error fetching room:", err);
+      console.error("Error details:", {
+        message: err.message,
+        stack: err.stack,
+      });
     }
   };
 
