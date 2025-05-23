@@ -6,7 +6,11 @@ export type RoomStatus = "scheduled" | "active" | "completed";
 export interface Room {
   _id: string;
   status: RoomStatus;
-  host: string;
+  host: {
+    _id: string;
+    name: string;
+    imageUrl: string;
+  };
   roomCode: string;
   createdAt: string;
   updatedAt: string;
@@ -14,7 +18,16 @@ export interface Room {
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number;
-  participants: Participant[];
+  participants: Array<{
+    _id: string;
+    user: {
+      _id: string;
+      name: string;
+      imageUrl: string;
+    };
+    score: number;
+    isLoggedIn: boolean;
+  }>;
   questionOrder: string[];
   isActive: boolean;
   autoStart: boolean;

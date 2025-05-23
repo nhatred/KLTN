@@ -8,6 +8,7 @@ import questionRoutes from "./routes/questions.js";
 import examSetRoutes from "./routes/examSetRoutes.js";
 import connectCloudinary from "./configs/cloudinary.js";
 import QuizRoomRoutes from "./routes/quizRoom.js";
+import participantRoutes from "./routes/participant.js";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import setupQuizSocket from "./ultil/socketIO.js";
@@ -38,7 +39,7 @@ app.use("/api/quiz", quizRoutes);
 app.use("/api/question", questionRoutes);
 app.use("/api/quizRoom", QuizRoomRoutes);
 app.use("/api/examSets", examSetRoutes);
-
+app.use("/api/participant", participantRoutes);
 // Setup Socket.IO
 setupQuizSocket(io);
 startCronJobs(io);

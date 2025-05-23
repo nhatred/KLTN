@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Share08Icon,
   Copy01Icon,
@@ -20,6 +20,215 @@ export default function JoinRoom() {
   const location = useLocation();
   const [room, setRoom] = useState<Room | null>(location.state?.room || null);
   const { getToken } = useAuth();
+
+  // Memoize socket connection to prevent unnecessary reconnections
+  const socket = useMemo(() => {
+    if (!id) return null;
+    return connectSocket(id);
+  }, [id]);
+
+  const handleParticipantJoined = useCallback(
+    async (updatedRoom: Room) => {
+      console.log("Socket: participantJoined event received", updatedRoom);
+
+      try {
+        const token = await getToken();
+
+        console.log("Starting to fetch user info for participants");
+        const participantsWithUserInfo = await Promise.all(
+          updatedRoom.participants.map(async (participant) => {
+            console.log("Processing participant:", participant);
+            if (!participant.user || typeof participant.user === "string") {
+              const userId = participant.user;
+              console.log("Found user ID:", userId);
+              if (!userId || userId === "anonymous") {
+                console.log("Anonymous user, returning default info");
+                return {
+                  ...participant,
+                  user: {
+                    _id: "anonymous",
+                    name: "Anonymous",
+                    imageUrl:
+                      "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+                  },
+                };
+              }
+
+              try {
+                console.log("Fetching user data for:", userId);
+                const userResponse = await fetch(
+                  `http://localhost:5000/api/participant/user/${userId}`,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  }
+                );
+
+                if (!userResponse.ok) {
+                  console.error(`Failed to fetch user data for ${userId}`);
+                  return {
+                    ...participant,
+                    user: {
+                      _id: userId,
+                      name: "Unknown User",
+                      imageUrl:
+                        "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+                    },
+                  };
+                }
+
+                const { data: userData } = await userResponse.json();
+                console.log("Received user data:", userData);
+                return {
+                  ...participant,
+                  user: userData,
+                };
+              } catch (error) {
+                console.error(`Error fetching user data for ${userId}:`, error);
+                return {
+                  ...participant,
+                  user: {
+                    _id: userId,
+                    name: "Unknown User",
+                    imageUrl:
+                      "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+                  },
+                };
+              }
+            }
+            console.log("User already has full info:", participant);
+            return participant;
+          })
+        );
+
+        console.log("Final processed participants:", participantsWithUserInfo);
+
+        setRoom((prevRoom) => {
+          const newRoom = prevRoom
+            ? {
+                ...prevRoom,
+                ...updatedRoom,
+                participants: participantsWithUserInfo,
+              }
+            : {
+                ...updatedRoom,
+                participants: participantsWithUserInfo,
+              };
+          console.log("Updated room state:", newRoom);
+          return newRoom;
+        });
+      } catch (error) {
+        console.error("Error handling participant joined:", error);
+      }
+    },
+    [getToken]
+  );
+
+  // Socket connection effect
+  useEffect(() => {
+    if (!socket) return;
+
+    const initializeSocket = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        // Join room as host
+        socket.emit("joinUserRoomManager", id);
+
+        // Listen for participant updates
+        socket.on("participantJoined", handleParticipantJoined);
+
+        socket.on("participantLeft", (updatedRoom: Room) => {
+          console.log("Socket: participantLeft event received", updatedRoom);
+          setRoom((prevRoom) =>
+            prevRoom
+              ? {
+                  ...prevRoom,
+                  ...updatedRoom,
+                  participants: updatedRoom.participants,
+                }
+              : updatedRoom
+          );
+        });
+
+        // Listen for room updates
+        socket.on("room:time_updated", (data: { endTime: string }) => {
+          console.log("Socket: room time updated", data);
+          setRoom((prevRoom) =>
+            prevRoom
+              ? {
+                  ...prevRoom,
+                  endTime: data.endTime,
+                }
+              : null
+          );
+        });
+
+        socket.on("room:ended", (data: { endTime: string }) => {
+          console.log("Socket: room ended", data);
+          setRoom((prevRoom) =>
+            prevRoom
+              ? {
+                  ...prevRoom,
+                  status: "completed",
+                  endTime: data.endTime,
+                }
+              : null
+          );
+        });
+      } catch (error) {
+        console.error("Error initializing socket:", error);
+      }
+    };
+
+    initializeSocket();
+
+    return () => {
+      socket.off("participantJoined");
+      socket.off("participantLeft");
+      socket.off("room:time_updated");
+      socket.off("room:ended");
+      disconnectSocket(socket);
+    };
+  }, [socket, id, getToken, handleParticipantJoined]);
+
+  // Initial room data fetch
+  useEffect(() => {
+    if (!location.state?.room) {
+      getRoom();
+    }
+  }, [id, location.state]);
+
+  // Render participant list with memo to prevent unnecessary re-renders
+  const ParticipantList = useMemo(() => {
+    return room?.participants?.map((participant) => (
+      <div
+        key={participant._id}
+        className="flex relative h-full items-center justify-start gap-3 bg-[#384052]/50 backdrop-blur-sm px-3 py-5 rounded-lg group"
+      >
+        <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center">
+          <img
+            className="object-cover w-full h-full"
+            src={
+              participant.user?.imageUrl ||
+              "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D"
+            }
+            alt={participant.user?.name || "User"}
+          />
+        </div>
+        <p className="text-lg font-semibold">
+          {participant.user?.name || "Anonymous"}
+        </p>
+        <div className="flex absolute left-2 right-2 top-2 bottom-2 bg-red-500 rounded-lg items-center justify-center gap-2 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
+          <p className="text-sm font-semibold text-darkblue">
+            Nhấp để xóa thí sinh
+          </p>
+        </div>
+      </div>
+    ));
+  }, [room?.participants]);
 
   const handleEndQuiz = () => {
     setShowConfirmModal(true);
@@ -47,8 +256,9 @@ export default function JoinRoom() {
 
       const data = await response.json();
       if (data.success) {
+        console.log("Full room data:", data.data);
+        console.log("Participants data:", data.data.participants);
         setRoom(data.data);
-        console.log("Room data from ID:", room);
       } else {
         throw new Error(data.message || "Không thể tải dữ liệu phòng");
       }
@@ -56,12 +266,6 @@ export default function JoinRoom() {
       console.error("Error fetching room:", err);
     }
   };
-
-  useEffect(() => {
-    if (!location.state?.room) {
-      getRoom();
-    }
-  }, [id, location.state]);
 
   const calculateTimeRemaining = () => {
     if (!room?.startTime) return;
@@ -107,92 +311,6 @@ export default function JoinRoom() {
       return () => clearInterval(timer);
     }
   }, [room?.startTime]);
-
-  // Add WebSocket connection
-  useEffect(() => {
-    let socket: any = null;
-
-    const initializeSocket = async () => {
-      try {
-        const token = await getToken();
-        if (!token) return;
-
-        socket = await connectSocket(id || "");
-
-        // Join room as host
-        socket.emit("joinUserRoomManager", id);
-
-        // Listen for participant updates
-        socket.on("participantJoined", (updatedRoom: Room) => {
-          console.log("Participant joined:", updatedRoom);
-          setRoom((prevRoom) =>
-            prevRoom
-              ? {
-                  ...prevRoom,
-                  ...updatedRoom,
-                  participants: updatedRoom.participants,
-                }
-              : updatedRoom
-          );
-        });
-
-        socket.on("participantLeft", (updatedRoom: Room) => {
-          console.log("Participant left:", updatedRoom);
-          setRoom((prevRoom) =>
-            prevRoom
-              ? {
-                  ...prevRoom,
-                  ...updatedRoom,
-                  participants: updatedRoom.participants,
-                }
-              : updatedRoom
-          );
-        });
-
-        // Listen for room updates
-        socket.on("room:time_updated", (data: { endTime: string }) => {
-          console.log("Room time updated:", data);
-          setRoom((prevRoom) =>
-            prevRoom
-              ? {
-                  ...prevRoom,
-                  endTime: data.endTime,
-                }
-              : null
-          );
-        });
-
-        socket.on("room:ended", (data: { endTime: string }) => {
-          console.log("Room ended:", data);
-          setRoom((prevRoom) =>
-            prevRoom
-              ? {
-                  ...prevRoom,
-                  status: "completed",
-                  endTime: data.endTime,
-                }
-              : null
-          );
-        });
-      } catch (error) {
-        console.error("Error initializing socket:", error);
-      }
-    };
-
-    if (id) {
-      initializeSocket();
-    }
-
-    return () => {
-      if (socket) {
-        socket.off("participantJoined");
-        socket.off("participantLeft");
-        socket.off("room:time_updated");
-        socket.off("room:ended");
-        disconnectSocket(socket);
-      }
-    };
-  }, [id]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background">
@@ -307,31 +425,7 @@ export default function JoinRoom() {
               </div>
             </div>
             <div className="flex items-center justify-center mt-20 grid grid-cols-5 gap-5 mx-8">
-              {room?.participants?.map((participant: any) => (
-                <div
-                  key={participant._id}
-                  className="flex relative h-full items-center justify-start gap-3 bg-[#384052]/50 backdrop-blur-sm px-3 py-5 rounded-lg group"
-                >
-                  <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center">
-                    <img
-                      className="object-cover"
-                      src={
-                        participant.user?.imageUrl ||
-                        "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D"
-                      }
-                      alt={participant.user?.name}
-                    />
-                  </div>
-                  <p className="text-lg font-semibold">
-                    {participant.user?.name}
-                  </p>
-                  <div className="flex absolute left-2 right-2 top-2 bottom-2 bg-red-500 rounded-lg items-center justify-center gap-2 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
-                    <p className="text-sm font-semibold text-darkblue">
-                      Nhấp để xóa thí sinh
-                    </p>
-                  </div>
-                </div>
-              ))}
+              {ParticipantList}
             </div>
           </div>
         </main>

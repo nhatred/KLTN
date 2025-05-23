@@ -2,6 +2,7 @@ import Participant from "../models/Participant.js";
 import QuizRoom from "../models/QuizRoom.js";
 import Question from "../models/Question.js";
 import ExamSet from "../models/ExamSet.js";
+import fetch from "node-fetch";
 
 // Tham gia phong thi
 async function joinRoom(socket, data) {
@@ -222,6 +223,7 @@ async function getParticipantStatus(participantId) {
     };
   }
 }
+
 // format lại cho phần câu hỏi còn lại
 async function _formatQuestion(question) {
   const formatted = {
@@ -243,5 +245,47 @@ async function _formatQuestion(question) {
 
   return formatted;
 }
+
+export const getUserInfo = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+      });
+    }
+
+    const clerkApiUrl = process.env.CLERK_API_URL || "https://api.clerk.com/v1";
+    const response = await fetch(`${clerkApiUrl}/users/${userId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user data: ${response.statusText}`);
+    }
+
+    const userData = await response.json();
+
+    res.json({
+      success: true,
+      data: {
+        _id: userId,
+        name: `${userData.first_name} ${userData.last_name}`,
+        imageUrl: userData.image_url,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user info:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching user information",
+      error: error.message,
+    });
+  }
+};
 
 export { joinRoom, handleDisconnect, getParticipantStatus, _formatQuestion };

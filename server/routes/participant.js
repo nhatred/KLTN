@@ -2,28 +2,20 @@ import express from "express";
 import {
   getParticipantStatus,
   _formatQuestion,
+  joinRoom,
+  getUserInfo,
 } from "../controllers/participantController.js";
-import verifyToken from "../middlewares/auth.js";
-import requireAuth from "../middlewares/requireAuth.js";
+import { verifyToken } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-// Lấy thông tin người tham gia
-// router.get('/:id', verifyToken, requireAuth, getParticipant);
-
 // Tham gia phòng thi (tạo mới hoặc lấy thông tin cũ)
-// router.post('/join', joinRoom);
-
-// Lấy danh sách người tham gia trong phòng
-// router.get('/room/:roomId', verifyToken, requireAuth, getRoomParticipants);
-
-// Cập nhật thông tin người tham gia (khi reconnect)
-// router.put('/:id', verifyToken, requireAuth, updateParticipant);
-
-// Rời phòng thi
-// router.delete('/:id', verifyToken, requireAuth, leaveRoom);
+router.post("/join", verifyToken, joinRoom);
 
 // Lấy trạng thái hiện tại của người tham gia
-router.get("/:id/status", verifyToken, requireAuth, getParticipantStatus);
+router.get("/:id/status", verifyToken, getParticipantStatus);
+
+// Lấy thông tin người dùng từ Clerk
+router.get("/user/:userId", verifyToken, getUserInfo);
 
 export default router;

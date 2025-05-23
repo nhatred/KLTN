@@ -265,10 +265,6 @@ async function getRoomById(req, res) {
       .populate("host")
       .populate({
         path: "participants",
-        populate: {
-          path: "user",
-          select: "name imageUrl",
-        },
       })
       .populate("questionOrder");
 
@@ -279,9 +275,76 @@ async function getRoomById(req, res) {
       });
     }
 
+    // Fetch user information from Clerk for each participant
+    const clerkApiUrl = process.env.CLERK_API_URL || "https://api.clerk.com/v1";
+    const participantsWithUserInfo = await Promise.all(
+      room.participants.map(async (participant) => {
+        if (!participant.user || participant.user === "anonymous") {
+          return {
+            ...participant.toObject(),
+            user: {
+              _id: "anonymous",
+              name: "Anonymous",
+              imageUrl:
+                "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+            },
+          };
+        }
+
+        try {
+          const userResponse = await fetch(
+            `${clerkApiUrl}/users/${participant.user}`,
+            {
+              headers: {
+                Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+              },
+            }
+          );
+
+          if (!userResponse.ok) {
+            console.error(`Failed to fetch user data for ${participant.user}`);
+            return {
+              ...participant.toObject(),
+              user: {
+                _id: participant.user,
+                name: "Unknown User",
+                imageUrl:
+                  "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+              },
+            };
+          }
+
+          const userData = await userResponse.json();
+          return {
+            ...participant.toObject(),
+            user: {
+              _id: participant.user,
+              name: `${userData.first_name} ${userData.last_name}`,
+              imageUrl: userData.image_url,
+            },
+          };
+        } catch (error) {
+          console.error(
+            `Error fetching user data for ${participant.user}:`,
+            error
+          );
+          return {
+            ...participant.toObject(),
+            user: {
+              _id: participant.user,
+              name: "Unknown User",
+              imageUrl:
+                "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
+            },
+          };
+        }
+      })
+    );
+
     // Transform the response to maintain backward compatibility
     const responseData = {
       ...room.toObject(),
+      participants: participantsWithUserInfo,
       quiz: room.examSetId, // Map examSetId to quiz for backward compatibility
     };
 
