@@ -100,6 +100,14 @@ interface ParticipantResponse extends SocketResponse {
   data?: ParticipantInfo;
 }
 
+// Add interface for User
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  imageUrl: string;
+}
+
 export default function JoinRoomForStudent() {
   const { code } = useParams();
   const { getToken, userId } = useAuth();
@@ -150,6 +158,8 @@ export default function JoinRoomForStudent() {
     const savedResults = localStorage.getItem(`quiz_results_${code}`);
     return savedResults ? JSON.parse(savedResults) : null;
   });
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -283,11 +293,54 @@ export default function JoinRoomForStudent() {
     [socket, userId, getToken]
   );
 
+  const fetchAllUsers = useCallback(async () => {
+    try {
+      console.log("Starting to fetch all users...");
+      const token = await getToken();
+
+      const response = await fetch("http://localhost:5000/api/users", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to fetch users. Status: ${response.status}`);
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
+        return;
+      }
+
+      const data = await response.json();
+      console.log("Raw API Response:", data);
+
+      if (data.success && Array.isArray(data.data)) {
+        console.log("\n=== ALL USERS IN DATABASE ===");
+        console.log(`Total users found: ${data.data.length}`);
+
+        data.data.forEach((user: User, index: number) => {
+          console.log(`\nUser ${index + 1}:`, {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            imageUrl: user.imageUrl,
+          });
+        });
+
+        setAllUsers(data.data);
+      } else {
+        console.error("Invalid response format:", data);
+      }
+    } catch (error) {
+      console.error("Error in fetchAllUsers:", error);
+    }
+  }, [getToken]);
+
   const getRoom = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Wait for user data to be available
       if (!user || !userId) {
         console.log("Waiting for user data...");
         return;
@@ -296,29 +349,11 @@ export default function JoinRoomForStudent() {
       const token = await getToken();
       if (!token) {
         console.error("No authentication token available");
-        return;
-      }
-
-      console.log("User data:", {
-        userId,
-        name: user.fullName,
-        imageUrl: user.imageUrl,
-        token: token ? "Available" : "Not available",
-      });
-
-      // Check if quiz was already submitted
-      const isSubmitted =
-        localStorage.getItem(`quiz_submitted_${code}`) === "true";
-      if (isSubmitted) {
-        setSubmitted(true);
-        const savedResults = localStorage.getItem(`quiz_results_${code}`);
-        if (savedResults) {
-          setQuizResults(JSON.parse(savedResults));
-        }
         setLoading(false);
         return;
       }
 
+      // First fetch room data
       const response = await fetch(
         `http://localhost:5000/api/quizRoom/code/${code}`,
         {
@@ -345,19 +380,14 @@ export default function JoinRoomForStudent() {
           },
         });
 
-        // Check if user is already a participant
-        const isParticipant = data.data.participants?.some(
-          (p: any) => p.user?._id === userId
-        );
+        // Set room data
+        setRoom(data.data);
 
-        if (!isParticipant) {
-          // Join room as a new participant
-          const updatedRoomData = await handleJoinRoom(data.data);
-          setRoom(updatedRoomData as Room);
-        } else {
-          setRoom(data.data);
-        }
+        // Then fetch all users
+        console.log("Fetching all users after room data...");
+        await fetchAllUsers();
 
+        // Fetch quiz if available
         if (data.data.quiz) {
           console.log("Fetching quiz with ID:", data.data.quiz._id);
           const quizResponse = await fetch(
@@ -391,19 +421,37 @@ export default function JoinRoomForStudent() {
       } else {
         throw new Error(data.message || "Không thể tải dữ liệu phòng");
       }
-    } catch (err) {
-      console.error("Error fetching room:", err);
+    } catch (error) {
+      console.error("Error in getRoom:", error);
     } finally {
       setLoading(false);
     }
-  }, [code, getToken, user, userId, handleJoinRoom]);
+  }, [code, getToken, user, userId, fetchAllUsers]);
 
-  // Effect to retry getting room data when user info becomes available
+  useEffect(() => {
+    getRoom();
+  }, [getRoom]);
+
+  // Update getRoom function to fetch users after room data
   useEffect(() => {
     if (user && userId) {
-      getRoom();
+      console.log("Initial users fetch...");
+      fetchAllUsers();
     }
-  }, [user, userId, getRoom]);
+  }, [user, userId, fetchAllUsers]);
+
+  // Add separate useEffect for initial users fetch
+  useEffect(() => {
+    if (user && userId) {
+      console.log("Initial users fetch...");
+      fetchAllUsers();
+    }
+  }, [user, userId, fetchAllUsers]);
+
+  // Add debug logging for state changes
+  useEffect(() => {
+    console.log("Current allUsers state:", allUsers);
+  }, [allUsers]);
 
   const handleConfirm = useCallback(async () => {
     try {
@@ -810,6 +858,22 @@ export default function JoinRoomForStudent() {
     const answeredCount = Object.keys(selectedAnswers).length;
     return Math.round((answeredCount / questions.length) * 100);
   }, [questions.length, selectedAnswers]);
+
+  // Add function to get user info from allUsers
+  const getUserInfo = useCallback(
+    (userId: string) => {
+      const userInfo = allUsers.find((user) => user._id === userId);
+      return (
+        userInfo || {
+          _id: userId,
+          name: "Anonymous",
+          email: "",
+          imageUrl: "",
+        }
+      );
+    },
+    [allUsers]
+  );
 
   const renderQuestion = useCallback(() => {
     const currentQ = questions[currentQuestionIndex] as Question;
@@ -1410,45 +1474,43 @@ export default function JoinRoomForStudent() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-center mt-20 grid grid-cols-5 gap-5 mx-8">
+
+            <div className=" items-center justify-center mt-20 grid grid-cols-5 gap-5 mx-8">
               {room?.participants?.map((participant: any) => {
-                console.log("Participant data:", {
-                  participant,
-                  id: participant._id,
-                  user: participant.user,
-                  name: participant?.user?.name,
-                  imageUrl: participant?.user?.imageUrl,
-                });
+                // Get user ID from participant
+                const participantUserId =
+                  typeof participant.user === "string"
+                    ? participant.user
+                    : participant.user?._id;
+
+                // Get full user info from allUsers
+                const userInfo = getUserInfo(participantUserId);
+
                 return (
                   <div
                     key={participant._id}
                     className="flex flex-col relative h-full items-center justify-center gap-3 bg-[#384052]/50 backdrop-blur-sm p-5 rounded-lg group transition-all duration-300 hover:bg-[#384052]/70"
                   >
                     <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center border-2 border-orange/50">
-                      {participant.user?.imageUrl ? (
+                      {userInfo.imageUrl ? (
                         <img
                           className="w-full h-full object-cover"
-                          src={participant.user.imageUrl}
-                          alt={participant.user?.name || "Anonymous"}
+                          src={userInfo.imageUrl}
+                          alt={userInfo.name || "Anonymous"}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange to-red-500 text-darkblue text-2xl font-bold">
-                          {participant.user?.name
-                            ? participant.user.name.charAt(0).toUpperCase()
+                          {userInfo.name
+                            ? userInfo.name.charAt(0).toUpperCase()
                             : "?"}
                         </div>
                       )}
                     </div>
                     <div className="text-center">
                       <p className="text-lg font-semibold text-orange">
-                        {participant.user?.name || "Anonymous"}
+                        {userInfo.name || "Anonymous"}
                       </p>
                       <p className="text-sm text-gray-400">Thí sinh</p>
-                    </div>
-                    <div className="flex absolute left-2 right-2 top-2 bottom-2 bg-red-500/90 rounded-lg items-center justify-center gap-2 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
-                      <p className="text-sm font-semibold text-white">
-                        Nhấp để xóa thí sinh
-                      </p>
                     </div>
                   </div>
                 );

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router";
 import "../style/home.css";
 import { useState } from "react";
-import { useAuth, useClerk } from "@clerk/clerk-react";
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { connectSocket } from "../services/socket";
 
 export default function Home() {
@@ -11,6 +11,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { userId } = useAuth();
   const { session } = useClerk();
+  const { user } = useUser();
 
   const handleJoinRoom = async (e: any) => {
     e.preventDefault();
@@ -68,7 +69,11 @@ export default function Home() {
 
       const joinRoomData = {
         roomCode,
-        userId,
+        user: {
+          _id: userId,
+          name: user?.fullName || user?.username,
+          imageUrl: user?.imageUrl,
+        },
         deviceInfo: {
           browser: navigator.userAgent,
         },

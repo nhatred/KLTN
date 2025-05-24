@@ -1,69 +1,29 @@
 import Participant from "../models/Participant.js";
 import QuizRoom from "../models/QuizRoom.js";
 import Question from "../models/Question.js";
+import mongoose from "mongoose";
 import Quiz from "../models/Quiz.js";
 import fetch from "node-fetch";
 
 // Tham gia phong thi
 async function joinRoom(socket, data) {
-  console.log("=== START JOIN ROOM ===");
   try {
-    const { roomCode, temporaryUsername, userId, deviceInfo } = data;
+    const { roomCode, temporaryUsername, user, deviceInfo } = data;
 
-    console.log("Joining room with data:", {
-      roomCode,
-      userId,
-      temporaryUsername,
-    });
-
-    // Tìm phòng thi và populate quiz với questions
-    const room = await QuizRoom.findOne({ roomCode }).populate({
-      path: "quiz",
-      populate: {
-        path: "questions",
-      },
-    });
-
+    // Tìm phòng thi và lấy thông tin quiz
+    const room = await QuizRoom.findOne({ roomCode }).populate("quiz");
     if (!room) {
-      throw new Error("Phòng thi không tồn tại");
+      throw new Error("Phòng thi không tồn tại hoặc chưa mở");
     }
 
-    console.log("Found room:", {
-      roomId: room._id,
-      roomCode: room.roomCode,
-      status: room.status,
-      quiz: room.quiz,
-      id: room.id,
-    });
+    const quiz = room.quiz;
 
-    // Kiểm tra quiz từ room đã được populate
-    if (!room.quiz) {
-      console.log("Quiz not found in room, trying to find quiz directly");
-      // Thử tìm quiz trực tiếp từ id của room
-      const quiz = await Quiz.findById(room.id);
-      if (!quiz) {
-        console.log(
-          "Quiz still not found. Room details:",
-          JSON.stringify(room, null, 2)
-        );
-        throw new Error("Không tìm thấy bài thi");
-      }
-      room.quiz = quiz;
-    }
-
-    console.log("Found quiz:", {
-      quizId: room.quiz._id,
-      questionsCount: room.quiz.questions?.length,
-      questions: room.quiz.questions,
-    });
-
-    // Kiểm tra người dùng đã tham gia chưa
+    // Kiểm tra người chơi đã tham gia chưa
     let participant;
-
-    if (userId) {
+    if (user?._id) {
       participant = await Participant.findOne({
         quizRoom: room._id,
-        user: userId,
+        user: user._id,
       });
     } else {
       participant = await Participant.findOne({
@@ -72,55 +32,59 @@ async function joinRoom(socket, data) {
       });
     }
 
-    // Tạo mới nếu chưa tham gia
+    // Nếu chưa tham gia, tạo mới
     if (!participant) {
-      // Xáo trộn câu hỏi
-      const shuffledQuestions = [...room.quiz.questions].sort(
-        () => 0.5 - Math.random()
-      );
+      let questions = [];
 
-      // Tạo participant mới với đầy đủ thông tin
-      const participantData = {
+      if (!quiz.questionBankQueries || quiz.questionBankQueries.length === 0) {
+        throw new Error("Quiz không có tiêu chí ngân hàng câu hỏi");
+      }
+
+      const allQuestions = [];
+      let a = 0;
+
+      for (const criteria of quiz.questionBankQueries) {
+        const { questionBankId, difficulty, limit } = criteria;
+
+        const filter = {
+          questionBankId: new mongoose.Types.ObjectId(questionBankId),
+        };
+        if (Array.isArray(difficulty) && difficulty.length > 0) {
+          filter.difficulty = { $in: difficulty };
+        }
+        console.log(`filter: ${(a = a + 1)}`, filter);
+        const matched = await Question.find(filter);
+        const shuffled = matched.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, limit);
+
+        allQuestions.push(...selected);
+      }
+
+      const shuffledAll = allQuestions.sort(() => 0.5 - Math.random());
+      questions = shuffledAll;
+
+      // Tạo participant mới
+      participant = new Participant({
         quizRoom: room._id,
-        quiz: room.quiz._id,
-        user: userId || "anonymous",
+        user: user?._id,
+        userNameId: user?.userName,
         temporaryUsername,
-        isLoggedIn: !!userId,
+        isLoggedIn: !!user,
         deviceInfo,
         connectionId: socket.id,
-        remainingQuestions: shuffledQuestions,
+        remainingQuestions: questions.map((q) => q._id),
         answeredQuestions: [],
-      };
-
-      console.log("Creating new participant with data:", {
-        ...participantData,
-        quizId: participantData.quiz?.toString(),
-        quizRoomId: participantData.quizRoom?.toString(),
-        userId: participantData.user,
       });
-
-      // Tạo và lưu participant
-      try {
-        participant = await Participant.create(participantData);
-        console.log("Participant created successfully:", {
-          participantId: participant._id,
-          quizId: participant.quiz?.toString(),
-          quizRoomId: participant.quizRoom?.toString(),
-          userId: participant.user,
-        });
-      } catch (createError) {
-        console.error("Error creating participant:", createError);
-        throw new Error("Lỗi khi tạo người tham gia: " + createError.message);
-      }
     } else {
-      // Cập nhật thông tin nếu đã tham gia
+      // Nếu đã tham gia, chỉ cập nhật thông tin kết nối
       participant.connectionId = socket.id;
       participant.lastActive = new Date();
       participant.deviceInfo = deviceInfo;
-      await participant.save();
     }
 
-    // Thêm vào phòng nếu chưa có
+    await participant.save();
+
+    // Đảm bảo người chơi nằm trong danh sách participants
     if (!room.participants.includes(participant._id)) {
       room.participants.push(participant._id);
       await room.save();
@@ -131,63 +95,25 @@ async function joinRoom(socket, data) {
       _id: { $in: participant.remainingQuestions },
     });
 
-    // Lấy danh sách câu hỏi đã làm (chỉ ID)
     const answeredQuestionIds = participant.answeredQuestions.map(
       (q) => q.questionId
     );
 
-    let userInfo = {
-      _id: userId || "anonymous",
-      name: temporaryUsername || "Anonymous",
-      imageUrl:
-        "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTZ8fHVzZXJ8ZW58MHx8MHx8fDA%3D",
-    };
-
-    // Lấy thông tin user từ Clerk nếu có userId
-    if (userId && userId !== "anonymous") {
-      try {
-        const clerkApiUrl =
-          process.env.CLERK_API_URL || "https://api.clerk.com/v1";
-        const userResponse = await fetch(`${clerkApiUrl}/users/${userId}`, {
-          headers: {
-            Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-          },
-        });
-
-        if (userResponse.ok) {
-          const userData = await userResponse.json();
-          userInfo = {
-            _id: userId,
-            name: `${userData.first_name} ${userData.last_name}`,
-            imageUrl: userData.image_url,
-          };
-        }
-      } catch (error) {
-        console.error("Error fetching user data from Clerk:", error);
-      }
-    }
-
-    // Thêm thông tin user vào participant
-    participant = {
-      ...participant.toObject(),
-      user: userInfo,
-    };
-
-    console.log("=== END JOIN ROOM ===");
     return {
       success: true,
       participant,
-      remainingQuestions: remainingQuestions.map((q) => _formatQuestion(q)),
+      remainingQuestions: remainingQuestions.map((q) =>
+        this._formatQuestion(q)
+      ),
       answeredQuestions: answeredQuestionIds,
       endTime: room.endTime,
       timeRemaining: room.timeRemaining,
       progress: {
         answered: participant.answeredQuestions.length,
-        total: room.quiz.questions.length,
+        total: participant.remainingQuestions.length,
       },
     };
   } catch (error) {
-    console.error("Error in joinRoom:", error);
     return {
       success: false,
       message: error.message,
