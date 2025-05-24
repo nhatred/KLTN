@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
+import { useClerk, UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Home01Icon,
@@ -18,11 +18,105 @@ import SelectQuizForRoomModal from "./SelectQuizForRoomModal";
 export default function Navbar() {
   const { openSignIn } = useClerk();
   const { user } = useUser();
+  const { getToken } = useAuth();
   const [isSelectQuizModalOpen, setIsSelectQuizModalOpen] = useState(false);
 
   const [lastScrollY, setLastScrollY] = useState(0);
   const [visible, setVisible] = useState(true);
   const [showShadow, setShowShadow] = useState(false);
+
+  // Add useEffect to handle user creation
+  useEffect(() => {
+    const createUserInDatabase = async () => {
+      if (!user) return;
+
+      try {
+        console.log("Starting user sync process...");
+        console.log("Current user from Clerk:", {
+          id: user.id,
+          name: user.fullName,
+          email: user.primaryEmailAddress?.emailAddress,
+          imageUrl: user.imageUrl,
+        });
+
+        const token = await getToken();
+        if (!token) {
+          console.error("No authentication token available");
+          return;
+        }
+
+        // Always try to create user first
+        try {
+          console.log("Attempting to create user in database...");
+          const createResponse = await fetch(
+            "http://localhost:5000/api/users",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                _id: user.id,
+                name: user.fullName,
+                email: user.primaryEmailAddress?.emailAddress,
+                imageUrl: user.imageUrl,
+              }),
+            }
+          );
+
+          const createData = await createResponse.json();
+          console.log("Create user response:", createData);
+
+          if (createResponse.ok) {
+            console.log("Successfully created user in database");
+          } else if (createResponse.status === 409) {
+            console.log("User already exists in database");
+
+            // Update existing user's information
+            const updateResponse = await fetch(
+              `http://localhost:5000/api/users/${user.id}`,
+              {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  name: user.fullName,
+                  email: user.primaryEmailAddress?.emailAddress,
+                  imageUrl: user.imageUrl,
+                }),
+              }
+            );
+
+            if (updateResponse.ok) {
+              console.log("Successfully updated existing user");
+            } else {
+              console.error(
+                "Failed to update existing user:",
+                await updateResponse.text()
+              );
+            }
+          } else {
+            console.error(
+              "Failed to create user:",
+              createData.message || "Unknown error"
+            );
+          }
+        } catch (error) {
+          console.error("Error during user creation/update:", error);
+        }
+      } catch (error) {
+        console.error("Error in user sync process:", error);
+      }
+    };
+
+    if (user) {
+      console.log("User detected, starting database sync...");
+      createUserInDatabase();
+    }
+  }, [user, getToken]);
 
   useEffect(() => {
     const handleScroll = () => {

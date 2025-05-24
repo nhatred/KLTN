@@ -1,5 +1,60 @@
 import User from "../models/User.js";
 
+// Create new user
+const createUser = async (req, res) => {
+  try {
+    const { _id, name, email, imageUrl } = req.body;
+
+    // Validate required fields
+    if (!_id || !name || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: _id, name, email",
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findById(_id);
+    if (existingUser) {
+      // Update existing user
+      const updatedUser = await User.findByIdAndUpdate(
+        _id,
+        { name, email, imageUrl },
+        { new: true }
+      );
+
+      return res.json({
+        success: true,
+        message: "User updated successfully",
+        data: updatedUser,
+      });
+    }
+
+    // Create new user
+    const newUser = new User({
+      _id,
+      name,
+      email,
+      imageUrl,
+    });
+
+    await newUser.save();
+
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      data: newUser,
+    });
+  } catch (error) {
+    console.error("Error creating/updating user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating/updating user",
+      error: error.message,
+    });
+  }
+};
+
 // Get all users
 const getUsers = async (req, res) => {
   try {
@@ -106,4 +161,4 @@ const getUsersByIds = async (req, res) => {
   }
 };
 
-export { getUsers, getUserById, getUsersByIds };
+export { getUsers, getUserById, getUsersByIds, createUser };
