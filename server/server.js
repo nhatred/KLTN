@@ -15,6 +15,7 @@ import setupQuizSocket from "./ultil/socketIO.js";
 import startCronJobs from "./ultil/cron.js";
 import { clerkMiddleware } from "@clerk/express";
 import userRoutes from "./routes/userRoutes.js";
+import submissionRoutes from "./routes/submission.js";
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -41,6 +42,7 @@ app.use("/api/question", questionRoutes);
 app.use("/api/quizRoom", QuizRoomRoutes);
 app.use("/api/examSets", examSetRoutes);
 app.use("/api/participant", participantRoutes);
+app.use("/api/submission", submissionRoutes);
 // Setup Socket.IO
 setupQuizSocket(io);
 startCronJobs(io);

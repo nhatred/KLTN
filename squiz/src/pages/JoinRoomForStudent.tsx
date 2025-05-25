@@ -13,7 +13,6 @@ import {
 import "../style/button.css";
 import { useParams, useNavigate, useLocation } from "react-router";
 import { useAuth, useUser } from "@clerk/clerk-react";
-import { Question } from "../types/Question";
 import { motion, AnimatePresence } from "framer-motion";
 import { io, Socket } from "socket.io-client";
 import QuizResults from "../components/QuizResults";
@@ -64,10 +63,20 @@ interface Participant {
 }
 
 interface Answer {
-  questionId: string;
-  userAnswer: string;
-  correctAnswer: string;
+  _id: string;
+  text: string;
   isCorrect: boolean;
+}
+
+interface Question {
+  _id: string;
+  questionText: string;
+  answers: Answer[];
+  questionType: string;
+  scorePerQuestion: number;
+  difficulty: string;
+  options: Answer[];
+  dragDropPairs: any[];
 }
 
 interface QuizResults {
@@ -165,23 +174,17 @@ export default function JoinRoomForStudent() {
   });
   const [animateQuestion, setAnimateQuestion] = useState(true);
   const [direction, setDirection] = useState(0);
-  const [quizResults, setQuizResults] = useState<{
-    score: number;
-    stats: {
-      totalQuestions: number;
-      correctAnswers: number;
-      incorrectAnswers: number;
-      correctPercentage: number;
-    };
-    answers: Array<{
-      questionId: string;
-      userAnswer: string;
-      correctAnswer: string;
-      isCorrect: boolean;
-    }>;
-  } | null>(() => {
+  const [quizResults, setQuizResults] = useState(() => {
     const savedResults = localStorage.getItem(`quiz_results_${code}`);
-    return savedResults ? JSON.parse(savedResults) : null;
+    if (savedResults) {
+      try {
+        return JSON.parse(savedResults);
+      } catch (e) {
+        console.error("Error parsing saved results:", e);
+        return null;
+      }
+    }
+    return null;
   });
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -594,164 +597,158 @@ export default function JoinRoomForStudent() {
         );
       }
 
-      console.log("Current user ID:", userId);
-      console.log("Current room participants:", room.participants);
-
-      // Use userId directly as participant identifier
-      let currentParticipant = userId;
-
-      if (!currentParticipant) {
-        console.log("Participant not found, attempting to join room...");
-
-        // Try to join room if participant doesn't exist
-        const joinResponse = await new Promise<SocketResponse>(
-          (resolve, reject) => {
-            socket.emit(
-              "joinRoom",
-              {
-                userId,
-                roomId: room._id,
-                roomCode: room.roomCode,
-                deviceInfo: {
-                  browser: navigator.userAgent,
-                  timestamp: new Date().toISOString(),
-                },
-              },
-              (response: SocketResponse) => {
-                console.log("Join room response:", response);
-                resolve(response);
-              }
-            );
-          }
-        );
-
-        if (!joinResponse.success) {
-          throw new Error(
-            joinResponse.message || "Không thể tham gia phòng thi"
-          );
-        }
-
-        currentParticipant = userId;
-      }
-
-      console.log("Proceeding with submission using participant:", {
-        participantId: userId,
-        userId: user.id,
-        name: user.fullName,
-      });
+      // Calculate start time and time spent
+      const startTime = new Date(room.startTime);
+      const endTime = new Date();
+      const timeSpentSeconds = Math.floor(
+        (endTime.getTime() - startTime.getTime()) / 1000
+      );
 
       // Calculate results before submitting
-      const results: QuizResults = {
-        score: Object.entries(selectedAnswers).reduce(
-          (total, [questionId, answerId]) => {
-            const question = questions.find((q) => q._id === questionId);
-            const isCorrect =
-              question?.answers.find((a) => a.isCorrect)?.text === answerId;
-            return total + (isCorrect ? 1 : 0);
+      const answersArray = questions.map((question) => {
+        const userAnswerId = selectedAnswers[question._id] || "";
+        const selectedAnswer = question.answers.find(
+          (a) => a._id === userAnswerId
+        );
+        const correctAnswer = question.answers.find((a) => a.isCorrect);
+        const isCorrect = selectedAnswer?._id === correctAnswer?._id;
+
+        return {
+          questionId: question._id,
+          userAnswer: selectedAnswer?.text || "",
+          correctAnswer: correctAnswer?.text || "",
+          isCorrect: isCorrect,
+          question: question.questionText,
+        };
+      });
+
+      const correctAnswers = answersArray.filter(
+        (answer) => answer.isCorrect
+      ).length;
+      const incorrectAnswers = answersArray.length - correctAnswers;
+      const correctPercentage = Math.round(
+        (correctAnswers / questions.length) * 100
+      );
+
+      // Prepare consistent result format for both immediate display and database
+      const results = {
+        participantId: userId,
+        quizRoom: {
+          _id: room._id,
+          name: room.quiz?.name || "Bài thi không tên",
+          roomCode: room.roomCode,
+          startTime: room.startTime,
+          durationMinutes: room.durationMinutes,
+          status: room.status,
+          quiz: {
+            _id: room.examSetId,
+            name: room.quiz?.name || "Bài thi không tên",
+            topic: room.quiz?.topic || "Chưa phân loại",
+            difficulty: room.quiz?.difficulty || "medium",
           },
-          0
-        ),
+        },
+        score: correctAnswers,
+        totalQuestions: questions.length,
+        joinedAt: startTime.toISOString(),
         stats: {
           totalQuestions: questions.length,
-          correctAnswers: Object.entries(selectedAnswers).filter(
-            ([questionId, answerId]) => {
-              const question = questions.find((q) => q._id === questionId);
-              return (
-                question?.answers.find((a) => a.isCorrect)?.text === answerId
-              );
-            }
-          ).length,
-          incorrectAnswers: Object.entries(selectedAnswers).filter(
-            ([questionId, answerId]) => {
-              const question = questions.find((q) => q._id === questionId);
-              return (
-                question?.answers.find((a) => a.isCorrect)?.text !== answerId
-              );
-            }
-          ).length,
-          correctPercentage: 0,
+          correctAnswers: correctAnswers,
+          incorrectAnswers: incorrectAnswers,
+          correctPercentage: correctPercentage,
+          timeSpent: timeSpentSeconds,
+        },
+        answers: answersArray,
+      };
+
+      // Set quiz results for immediate display
+      setQuizResults(results);
+      setSubmitted(true);
+
+      // First, save participation result with all answers at once
+      const token = await getToken();
+      const participationPayload = {
+        roomId: room._id,
+        userId: userId,
+        score: correctAnswers,
+        answers: answersArray,
+        stats: results.stats,
+        quizId: room.quiz._id,
+        type: room.quiz.isExam ? "exam" : "quiz",
+      };
+
+      console.log("Sending participation data:", participationPayload);
+
+      const participationResponse = await fetch(
+        "http://localhost:5000/api/submission/participation",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(participationPayload),
+        }
+      );
+
+      if (!participationResponse.ok) {
+        const errorData = await participationResponse.json();
+        console.error("Participation save error:", errorData);
+        throw new Error(errorData.message || "Không thể lưu kết quả tham gia");
+      }
+
+      const participationData = await participationResponse.json();
+      console.log("Participation save success:", participationData);
+
+      // Then, save to quiz results
+      const quizResultsPayload = {
+        quizId: room.quiz._id,
+        userAnswers: answersArray.map((answer) => ({
+          questionId: answer.questionId,
+          userAnswer: answer.userAnswer,
+          isCorrect: answer.isCorrect,
+          score: 1,
+        })),
+        score: correctAnswers,
+        userId: userId,
+        username: user?.fullName || "Anonymous",
+        totalScore: questions.length,
+        deviceId: `${navigator.userAgent}_${new Date().getTime()}`,
+        type: room.quiz.isExam ? "exam" : "quiz",
+        metadata: {
+          roomId: room._id,
+          roomCode: room.roomCode,
+          startTime: room.startTime,
+          endTime: new Date().toISOString(),
+          durationMinutes: room.durationMinutes,
+          isExam: room.quiz.isExam,
         },
       };
 
-      results.stats.correctPercentage = Math.round(
-        (results.stats.correctAnswers / results.stats.totalQuestions) * 100
+      console.log(
+        "Quiz results payload:",
+        JSON.stringify(quizResultsPayload, null, 2)
       );
 
-      // Prepare answers array for submission
-      const answersArray = Object.entries(selectedAnswers).map(
-        ([questionId, answerId]) => {
-          const question = questions.find((q) => q._id === questionId);
-          const correctAnswer =
-            question?.answers.find((a) => a.isCorrect)?.text ||
-            "Không xác định";
-          return {
-            questionId,
-            userAnswer: answerId,
-            correctAnswer,
-            isCorrect: answerId === correctAnswer,
-          };
+      const resultResponse = await fetch(
+        "http://localhost:5000/api/quiz/results",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(quizResultsPayload),
         }
       );
 
-      // Emit endSession event to server
-      await new Promise<void>((resolve, reject) => {
-        socket.emit(
-          "endSession",
-          {
-            roomId: room._id,
-            participantId: userId,
-            results: {
-              score: results.score,
-              totalQuestions: results.stats.totalQuestions,
-              answers: answersArray,
-            },
-          },
-          (response: SocketResponse) => {
-            if (response.success) {
-              resolve();
-            } else {
-              reject(
-                new Error(
-                  response.message || "Không thể kết thúc phiên làm bài"
-                )
-              );
-            }
-          }
-        );
-      });
-
-      // Save results to database
-      const token = await getToken();
-      const response = await fetch("http://localhost:5000/api/quiz/results", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          examSetId: room.examSetId,
-          userAnswers: answersArray,
-          score: results.score,
-          userId: userId,
-          username: user.fullName || "Anonymous",
-          totalScore: questions.length,
-          deviceId: userId,
-          stats: results.stats,
-        }),
-      });
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.message || "Lỗi khi lưu kết quả");
+      if (!resultResponse.ok) {
+        const errorData = await resultResponse.json();
+        console.error("Quiz results save error details:", errorData);
+        throw new Error(errorData.message || "Không thể lưu kết quả bài thi");
       }
 
-      // Update local state
-      setQuizResults({
-        ...results,
-        answers: answersArray,
-      });
-      setSubmitted(true);
-      setShowConfirmModal(false);
+      const resultData = await resultResponse.json();
+      console.log("Quiz results save success:", resultData);
 
       // Clear saved answers and current question
       localStorage.removeItem(`quiz_answers_${code}`);
@@ -759,19 +756,15 @@ export default function JoinRoomForStudent() {
 
       // Save submission state and results
       localStorage.setItem(`quiz_submitted_${code}`, "true");
-      localStorage.setItem(
-        `quiz_results_${code}`,
-        JSON.stringify({
-          ...results,
-          answers: answersArray,
-        })
-      );
+      localStorage.setItem(`quiz_results_${code}`, JSON.stringify(results));
 
       // Leave room
       socket.emit("leaveRoom", {
         roomId: room._id,
         participantId: userId,
       });
+
+      setShowConfirmModal(false);
     } catch (error) {
       console.error("Error submitting answers:", error);
       alert(
@@ -1030,26 +1023,8 @@ export default function JoinRoomForStudent() {
           JSON.stringify(newAnswers)
         );
 
-        // Submit answer to server using new method
-        socket.emit(
-          "submitAnswerRoom",
-          {
-            userId,
-            roomId: room._id,
-            questionId,
-            answerId,
-            clientTimestamp: new Date().toISOString(),
-          },
-          (response: SubmissionResponse) => {
-            console.log("Answer submission response:", response);
-
-            if (response.success && response.data) {
-              // Do not update questions to prevent auto-advancing
-              console.log("Answer submitted successfully");
-            }
-          }
-        );
-
+        // Remove socket emit for immediate submission
+        // Just store the answer locally until final submission
         return newAnswers;
       });
 
@@ -1058,7 +1033,7 @@ export default function JoinRoomForStudent() {
         window.navigator.vibrate(50);
       }
     },
-    [code, socket, userId, room?._id]
+    [code, socket, room?._id]
   );
 
   const handleCopy = useCallback(
@@ -1626,6 +1601,30 @@ export default function JoinRoomForStudent() {
     }
   `;
 
+  console.log("Current state:", {
+    submitted,
+    quizResults,
+    questions,
+    selectedAnswers,
+  });
+
+  // Add new useEffect for handling quiz results persistence
+  useEffect(() => {
+    // Check if we should show results
+    const savedSubmitted = localStorage.getItem(`quiz_submitted_${code}`);
+    const savedResults = localStorage.getItem(`quiz_results_${code}`);
+
+    if (savedSubmitted === "true" && savedResults) {
+      try {
+        const parsedResults = JSON.parse(savedResults);
+        setQuizResults(parsedResults);
+        setSubmitted(true);
+      } catch (e) {
+        console.error("Error parsing saved results:", e);
+      }
+    }
+  }, [code]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
@@ -1665,22 +1664,15 @@ export default function JoinRoomForStudent() {
   if (submitted && quizResults) {
     return (
       <QuizResults
-        score={quizResults?.score || 0}
-        totalQuestions={quizResults?.stats.totalQuestions || 0}
-        stats={quizResults?.stats || {}}
-        answers={quizResults?.answers.map((answer) => ({
-          ...answer,
-          question:
-            questions.find((q) => q._id === answer.questionId)?.questionText ||
-            "Câu hỏi không có sẵn",
+        score={quizResults.score}
+        totalQuestions={quizResults.totalQuestions}
+        stats={quizResults.stats}
+        answers={quizResults.answers}
+        questions={questions.map((q) => ({
+          _id: q._id || "",
+          questionText: q.questionText,
+          answers: q.answers,
         }))}
-        questions={questions
-          .filter((q): q is Question & { _id: string } => q._id !== undefined)
-          .map((q) => ({
-            _id: q._id as string,
-            questionText: q.questionText,
-            answers: q.answers,
-          }))}
       />
     );
   }

@@ -9,6 +9,9 @@ import {
   CheckmarkCircle02Icon,
   Cancel01Icon,
   Backward01Icon,
+  ClockIcon,
+  CheckmarkCircleIcon,
+  Cancel01Icon as CloseCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { useNavigate } from "react-router";
 
@@ -47,51 +50,96 @@ export default function QuizResults({
   questions,
 }: QuizResultsProps) {
   const navigate = useNavigate();
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true); // Mặc định hiển thị chi tiết
+
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 },
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background">
-      <div className="bg-black/50 backdrop-blur-sm rounded-3xl p-8 max-w-4xl w-full mx-4 shadow-2xl transform transition-all">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-4xl font-bold text-white">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
-              Kết quả
-            </span>{" "}
-            bài thi
-          </h2>
-          <HugeiconsIcon icon={ChampionIcon} size={32} />
-        </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background p-6">
+      <motion.div
+        className="bg-black/50 backdrop-blur-sm rounded-3xl p-8 max-w-4xl w-full mx-4 shadow-2xl"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        {/* Header */}
+        <motion.div
+          className="flex items-center justify-between mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div>
+            <h2 className="text-4xl font-bold">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
+                Kết quả
+              </span>
+              <span className="text-white"> bài thi</span>
+            </h2>
+            <p className="text-gray-400 mt-2">
+              Xem chi tiết kết quả bài làm của bạn
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <HugeiconsIcon
+              icon={ChampionIcon}
+              size={40}
+              className="text-orange"
+            />
+          </div>
+        </motion.div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {/* Score Cards */}
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {/* Score Card */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            variants={itemVariants}
             className="bg-rgba p-6 rounded-xl shadow-lg hover:shadow-indigo-900/20 transition-all"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-4">
               <p className="text-background font-medium">Điểm số</p>
-              <HugeiconsIcon icon={Chart02Icon} size={24} />
+              <HugeiconsIcon
+                icon={Chart02Icon}
+                size={24}
+                className="text-orange"
+              />
             </div>
             <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange to-red-wine">
               {score}/{totalQuestions}
             </p>
+            <p className="text-gray-400 text-sm mt-2">Tổng điểm đạt được</p>
           </motion.div>
 
+          {/* Progress Card */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-rgba col-span-2 p-6 rounded-xl transition-all"
+            variants={itemVariants}
+            className="bg-rgba p-6 rounded-xl shadow-lg hover:shadow-indigo-900/20 transition-all"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-4">
               <p className="text-background font-medium">Tỷ lệ đúng</p>
-              <div className="bg-orange text-darkblue text-xs font-bold px-2 py-1 rounded-full">
+              <div className="bg-orange text-darkblue text-xs font-bold px-3 py-1 rounded-full">
                 {stats.correctPercentage}%
               </div>
             </div>
-            <div className="w-full bg-gray-500 rounded-full h-3 mt-2">
+            <div className="w-full bg-gray-700 rounded-full h-3">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${stats.correctPercentage}%` }}
@@ -99,11 +147,47 @@ export default function QuizResults({
                 className="bg-gradient-to-r from-orange to-red-wine h-3 rounded-full"
               />
             </div>
-            <p className="text-xl font-medium text-orange mt-2">
-              {stats.correctAnswers}/{totalQuestions} câu đúng
-            </p>
+            <div className="flex justify-between mt-4 text-sm">
+              <span className="text-gray-400">
+                Đúng: {stats.correctAnswers}
+              </span>
+              <span className="text-gray-400">
+                Sai: {stats.incorrectAnswers}
+              </span>
+            </div>
           </motion.div>
-        </div>
+
+          {/* Stats Card */}
+          <motion.div
+            variants={itemVariants}
+            className="bg-rgba p-6 rounded-xl shadow-lg hover:shadow-indigo-900/20 transition-all"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-background font-medium">Thống kê</p>
+              <HugeiconsIcon
+                icon={ClockIcon}
+                size={24}
+                className="text-orange"
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Tổng câu hỏi:</span>
+                <span className="font-medium text-white">{totalQuestions}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Đã trả lời:</span>
+                <span className="font-medium text-white">{answers.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Chưa trả lời:</span>
+                <span className="font-medium text-white">
+                  {totalQuestions - answers.length}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
 
         {/* Answers Section */}
         <motion.div
@@ -120,13 +204,14 @@ export default function QuizResults({
               <h3 className="text-xl font-semibold text-background">
                 Chi tiết câu trả lời
               </h3>
-              <span className="ml-3 bg-background px-2 py-1 rounded-lg text-sm text-darkblue">
-                {0} câu hỏi
+              <span className="ml-3 bg-orange px-3 py-1 rounded-lg text-sm text-darkblue font-medium">
+                {answers.length} câu hỏi
               </span>
             </div>
             <HugeiconsIcon
               icon={showDetails ? ArrowUp01Icon : ArrowDown01Icon}
               size={24}
+              className="text-orange"
             />
           </button>
 
@@ -135,12 +220,14 @@ export default function QuizResults({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               transition={{ duration: 0.3 }}
-              className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar"
+              className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar"
             >
               {answers.map((answer, index) => {
                 const question = questions.find(
                   (q) => q._id === answer.questionId
                 );
+                const allAnswers = question?.answers || [];
+
                 return (
                   <motion.div
                     key={index}
@@ -149,58 +236,67 @@ export default function QuizResults({
                     transition={{ delay: index * 0.1 }}
                     className={`p-5 rounded-xl border ${
                       answer.isCorrect
-                        ? "bg-green-950/50 border-green-700/50 shadow-md shadow-green-900/20"
-                        : "bg-red-950/50 border-red-700/50 shadow-md shadow-red-900/20"
+                        ? "bg-green-950/50 border-green-700/50"
+                        : "bg-red-950/50 border-red-700/50"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="font-medium text-lg text-cyan-100">
-                        Câu {index + 1}
-                      </p>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="bg-orange text-darkblue text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center">
+                          {index + 1}
+                        </span>
+                        <h4 className="font-medium text-lg text-cyan-100">
+                          Câu hỏi {index + 1}
+                        </h4>
+                      </div>
                       {answer.isCorrect ? (
                         <div className="flex items-center gap-2 text-emerald-400">
-                          <HugeiconsIcon
-                            icon={CheckmarkCircle02Icon}
-                            size={20}
-                          />
-                          <span className="text-sm font-medium">Đúng</span>
+                          <HugeiconsIcon icon={CheckmarkCircleIcon} size={24} />
+                          <span className="font-medium">Đúng</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 text-rose-400">
-                          <HugeiconsIcon icon={Cancel01Icon} size={20} />
-                          <span className="text-sm font-medium">Sai</span>
+                          <HugeiconsIcon icon={CloseCircleIcon} size={24} />
+                          <span className="font-medium">Sai</span>
                         </div>
                       )}
                     </div>
 
-                    <p className="text-cyan-100 mb-3">
-                      {question?.questionText || "Câu hỏi không có sẵn"}
-                    </p>
-
-                    <div className="space-y-2 ml-2">
-                      <p className="text-sm flex items-center">
-                        <span
-                          className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                            answer.userAnswer === answer.correctAnswer
-                              ? "bg-emerald-400"
-                              : "bg-rose-400"
-                          }`}
-                        ></span>
-                        <span className="text-cyan-300">Đáp án của bạn:</span>
-                        <span className="ml-1 font-medium text-white">
-                          {answer.userAnswer}
-                        </span>
+                    <div className="mb-4">
+                      <p className="text-cyan-100 text-lg mb-2">
+                        {question?.questionText || "Câu hỏi không có sẵn"}
                       </p>
+                    </div>
 
-                      {!answer.isCorrect && (
-                        <p className="text-sm flex items-center">
-                          <span className="inline-block w-3 h-3 rounded-full mr-2 bg-emerald-400"></span>
-                          <span className="text-cyan-300">Đáp án đúng:</span>
-                          <span className="ml-1 font-medium text-white">
-                            {answer.correctAnswer}
-                          </span>
-                        </p>
-                      )}
+                    <div className="space-y-3 bg-black/20 p-4 rounded-lg">
+                      {allAnswers.map((ans, ansIndex) => (
+                        <div
+                          key={ansIndex}
+                          className={`p-3 rounded-lg flex items-center justify-between ${
+                            ans.text === answer.userAnswer
+                              ? ans.isCorrect
+                                ? "bg-green-900/30 border border-green-500/30"
+                                : "bg-red-900/30 border border-red-500/30"
+                              : ans.isCorrect
+                              ? "bg-green-900/30 border border-green-500/30"
+                              : "bg-gray-800/30"
+                          }`}
+                        >
+                          <span className="text-gray-200">{ans.text}</span>
+                          <div className="flex items-center gap-2">
+                            {ans.text === answer.userAnswer && (
+                              <span className="text-sm text-gray-400">
+                                Câu trả lời của bạn
+                              </span>
+                            )}
+                            {ans.isCorrect && (
+                              <span className="text-sm text-emerald-400">
+                                Đáp án đúng
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </motion.div>
                 );
@@ -231,7 +327,7 @@ export default function QuizResults({
             Đến trang hoạt động
           </button>
         </motion.div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -561,7 +561,8 @@ async function getUserQuizHistory(req, res) {
     })
       .populate({
         path: "quiz",
-        select: "_id name imageUrl difficulty topic totalPlays createdAt",
+        select:
+          "_id name imageUrl difficulty topic totalPlays createdAt isExam",
         model: "Quiz",
       })
       .sort({ joinedAt: -1 })
@@ -617,6 +618,7 @@ async function getUserQuizHistory(req, res) {
               topic: participation.quiz.topic,
               totalPlays: participation.quiz.totalPlays,
               createdAt: participation.quiz.createdAt,
+              isExam: participation.quiz.isExam,
               questions: quizQuestions || [],
             },
             score: participation.score || 0,

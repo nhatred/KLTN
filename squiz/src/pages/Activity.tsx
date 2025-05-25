@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { Quiz } from "../types/Quiz";
 import { format } from "date-fns";
 import QuizDetailModal from "../components/QuizDetailModal";
+import ExamResultDetailModal from "../components/ExamResultDetailModal";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   PlayIcon,
@@ -26,6 +27,7 @@ interface QuizPracticeResult {
     topic: string;
     totalPlays: number;
     createdAt: string;
+    isExam: boolean;
   };
   score: number;
   joinedAt: string;
@@ -67,7 +69,9 @@ interface QuizRoomResult {
 export default function Activity() {
   const { getToken, userId } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isExamDetailModalOpen, setIsExamDetailModalOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
+  const [selectedExamResult, setSelectedExamResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quizPracticeResults, setQuizPracticeResults] = useState<
@@ -103,10 +107,44 @@ export default function Activity() {
       const examData = await examResponse.json();
 
       if (practiceData.success) {
-        setQuizPracticeResults(practiceData.data);
-      }
-      if (examData.success) {
-        setQuizRoomResults(examData.data);
+        console.log("Practice data:", practiceData.data);
+        // Phân loại quiz dựa vào isExam và đã nộp bài
+        const practiceQuizzes = practiceData.data.filter(
+          (history: QuizPracticeResult) =>
+            !history.quiz.isExam && history.stats.totalQuestions > 0
+        );
+        const examQuizzes = practiceData.data
+          .filter(
+            (history: QuizPracticeResult) =>
+              history.quiz.isExam && history.stats.totalQuestions > 0
+          )
+          .map((history: QuizPracticeResult) => ({
+            participationId: history.participationId,
+            quizRoom: {
+              quiz: history.quiz,
+              roomCode: "N/A",
+              durationMinutes: 0,
+            },
+            score: history.score,
+            joinedAt: history.joinedAt,
+            stats: {
+              ...history.stats,
+              timeSpent: 0,
+            },
+          }));
+
+        setQuizPracticeResults(practiceQuizzes);
+        // Kết hợp quiz exam từ practice và quiz room
+        if (examData.success) {
+          console.log("Exam data:", examData.data);
+          // Lọc quizRoom results để chỉ lấy những bài đã nộp
+          const submittedQuizRoomResults = examData.data.filter(
+            (result: QuizRoomResult) => result.stats.totalQuestions > 0
+          );
+          setQuizRoomResults([...examQuizzes, ...submittedQuizRoomResults]);
+        } else {
+          setQuizRoomResults(examQuizzes);
+        }
       }
     } catch (err) {
       setError("Error fetching history");
@@ -122,9 +160,34 @@ export default function Activity() {
     }
   }, [userId, getToken]);
 
-  const modalPlay = (quiz: Quiz) => {
+  const modalPlay = (quiz: Partial<Quiz>) => {
     setIsModalOpen(true);
-    setSelectedQuiz(quiz);
+    setSelectedQuiz(quiz as Quiz);
+  };
+
+  const handleExamClick = async (result: any) => {
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `http://localhost:5000/api/submission/participant/${result.participationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setSelectedExamResult({
+          ...result,
+          submissions: data.submissions,
+        });
+        setIsExamDetailModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Error fetching submissions:", err);
+    }
   };
 
   if (loading) {
@@ -289,13 +352,14 @@ export default function Activity() {
           {quizRoomResults.map((result) => (
             <div
               key={result.participationId}
-              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300"
+              onClick={() => handleExamClick(result)}
+              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300 cursor-pointer"
             >
               {/* Quiz Room Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-orange mb-2">
-                    {result.quizRoom.name}
+                    {result.quizRoom.quiz.name}
                   </h3>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <span className="px-2 py-1 bg-gray-700/50 rounded-full">
@@ -378,6 +442,17 @@ export default function Activity() {
         <QuizDetailModal
           quiz={selectedQuiz}
           onClose={() => setIsModalOpen(false)}
+        />
+      )}
+
+      {isExamDetailModalOpen && selectedExamResult && (
+        <ExamResultDetailModal
+          isOpen={isExamDetailModalOpen}
+          onClose={() => {
+            setIsExamDetailModalOpen(false);
+            setSelectedExamResult(null);
+          }}
+          result={selectedExamResult}
         />
       )}
     </div>

@@ -329,4 +329,93 @@ async function submitAnswerRoom(socket, data) {
   }
 }
 
-export { submitAnswer, submitAnswerRoom, _evaluateAnswer, syncSubmissions };
+// Add saveParticipationResult function
+async function saveParticipationResult(req, res) {
+  try {
+    console.log("Received participation data:", req.body);
+    const { roomId, userId, score, answers, stats } = req.body;
+
+    if (!roomId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: roomId and userId",
+      });
+    }
+
+    // Find participant
+    const participant = await Participant.findOne({
+      user: userId,
+      quizRoom: roomId,
+    });
+
+    if (!participant) {
+      console.log("Participant not found for:", { userId, roomId });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thông tin người tham gia",
+      });
+    }
+
+    console.log("Found participant:", participant._id);
+
+    // Update participant's score and stats
+    participant.score = score;
+    participant.finalAnswers = answers;
+    participant.stats = stats;
+    participant.completedAt = new Date();
+    participant.status = "completed";
+
+    await participant.save();
+    console.log("Saved participant results:", {
+      participantId: participant._id,
+      score,
+      stats,
+    });
+
+    // Return success response
+    return res.json({
+      success: true,
+      data: {
+        participantId: participant._id,
+        score,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error("Error saving participation result:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Lỗi khi lưu kết quả tham gia",
+    });
+  }
+}
+
+export const getSubmissionsByParticipant = async (req, res) => {
+  try {
+    const { participantId } = req.params;
+
+    const submissions = await Submission.find({ participant: participantId })
+      .populate("question", "questionText answers")
+      .sort({ createdAt: 1 })
+      .lean();
+
+    res.json({
+      success: true,
+      submissions,
+    });
+  } catch (error) {
+    console.error("Error fetching submissions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch submissions",
+    });
+  }
+};
+
+export {
+  submitAnswer,
+  submitAnswerRoom,
+  _evaluateAnswer,
+  syncSubmissions,
+  saveParticipationResult,
+};

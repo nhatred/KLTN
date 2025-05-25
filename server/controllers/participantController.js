@@ -2,9 +2,7 @@ import Participant from "../models/Participant.js";
 import QuizRoom from "../models/QuizRoom.js";
 import Question from "../models/Question.js";
 import mongoose from "mongoose";
-// import Quiz from "../models/Quiz.js";
 import fetch from "node-fetch";
-import ExamSet from "../models/ExamSet.js";
 
 // format lại cho phần câu hỏi còn lại
 async function _formatQuestion(question) {
