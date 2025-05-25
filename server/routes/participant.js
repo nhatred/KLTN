@@ -4,6 +4,7 @@ import {
   _formatQuestion,
   joinRoom,
   getUserInfo,
+  getParticipantStatusByUserId,
 } from "../controllers/participantController.js";
 import { verifyToken } from "../middlewares/auth.js";
 
@@ -17,5 +18,8 @@ router.get("/:id/status", verifyToken, getParticipantStatus);
 
 // Lấy thông tin người dùng từ Clerk
 router.get("/user/:userId", verifyToken, getUserInfo);
+
+// Lấy trạng thái người tham gia theo userId
+router.get("/status/:userId", verifyToken, getParticipantStatusByUserId);
 
 export default router;

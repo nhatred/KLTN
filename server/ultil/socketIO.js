@@ -5,6 +5,7 @@ import {
 } from "../controllers/participantController.js";
 import {
   submitAnswer,
+  submitAnswerRoom,
   syncSubmissions,
 } from "../controllers/submissionController.js";
 import {
@@ -58,9 +59,13 @@ const setupQuizSocket = (io) => {
             });
 
           if (updatedRoom) {
+            // Chỉ gửi thông tin participant mới
             io.to(`room_${result.participant.quizRoom}`).emit(
               "participantJoined",
-              updatedRoom
+              {
+                participant: result.participant,
+                roomId: result.participant.quizRoom,
+              }
             );
           }
         } catch (error) {
@@ -118,6 +123,22 @@ const setupQuizSocket = (io) => {
         });
       }
       callback(result);
+    });
+
+    // Add new submitAnswerRoom handler
+    socket.on("submitAnswerRoom", async (data, callback) => {
+      try {
+        console.log("Received submitAnswerRoom request:", data);
+        const result = await submitAnswerRoom(socket, data);
+        console.log("submitAnswerRoom result:", result);
+        callback(result);
+      } catch (error) {
+        console.error("Error in submitAnswerRoom:", error);
+        callback({
+          success: false,
+          message: error.message || "Lỗi khi nộp câu trả lời",
+        });
+      }
     });
 
     // Cập nhật Time khi Active
@@ -215,34 +236,15 @@ const setupQuizSocket = (io) => {
 
     // Xử lý ngắt kết nối
     socket.on("disconnect", async () => {
-      try {
-        const participant = await Participant.findOne({
-          connectionId: socket.id,
+      console.log("Client disconnected:", socket.id);
+      const result = await handleDisconnect(socket);
+
+      if (result.success && result.participant) {
+        // Thông báo cho những người còn lại trong phòng
+        io.to(`room_${result.participant.quizRoom}`).emit("participantLeft", {
+          participantId: result.participant._id,
+          roomId: result.participant.quizRoom,
         });
-        if (participant) {
-          // Cập nhật trạng thái người tham gia
-          participant.connectionId = null;
-          participant.lastActive = new Date();
-          await participant.save();
-
-          // Thông báo cho tất cả người dùng trong phòng
-          const updatedRoom = await QuizRoom.findById(participant.quizRoom)
-            .populate("participants")
-            .populate({
-              path: "participants",
-              populate: {
-                path: "user",
-                select: "name imageUrl",
-              },
-            });
-
-          io.to(`room_${participant.quizRoom}`).emit(
-            "participantLeft",
-            updatedRoom
-          );
-        }
-      } catch (error) {
-        console.error("Error handling disconnect:", error);
       }
     });
   });

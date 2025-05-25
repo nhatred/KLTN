@@ -105,29 +105,27 @@ async function submitAnswer(socket, data) {
   }
 }
 
-// Đánh giá câu trả lời (True => 1, false => 0)
-async function _evaluateAnswer(question, userAnswer) {
+// Đánh giá câu trả lời
+async function _evaluateAnswer(question, userAnswerId) {
   let isCorrect = false;
   let score = 0;
 
   switch (question.questionType) {
     case "multipleChoices":
     case "dropdown":
-      // Đối với câu hỏi chọn đáp án
-      const correctAnswers = question.answers
-        .filter((a) => a.isCorrect)
-        .map((a) => a.text);
-
-      isCorrect = correctAnswers.includes(userAnswer);
-      score = isCorrect ? 1 : 0;
+      // Đối với câu hỏi chọn đáp án, so sánh theo ID
+      const correctAnswer = question.answers.find((a) => a.isCorrect);
+      isCorrect =
+        correctAnswer && correctAnswer._id.toString() === userAnswerId;
+      score = isCorrect ? question.scorePerQuestion || 1 : 0;
       break;
 
     case "fillInBlank":
       // Đối với điền vào chỗ trống
       isCorrect = question.answers.some(
-        (a) => a.text.toLowerCase() === userAnswer.toLowerCase()
+        (a) => a.text.toLowerCase() === userAnswerId.toLowerCase()
       );
-      score = isCorrect ? 1 : 0;
+      score = isCorrect ? question.scorePerQuestion || 1 : 0;
       break;
 
     case "paragraph":
@@ -140,12 +138,12 @@ async function _evaluateAnswer(question, userAnswer) {
       // Đối với kéo thả
       const correctPairs = question.dragDropPairs;
       isCorrect = correctPairs.every((pair) =>
-        userAnswer.some(
+        userAnswerId.some(
           (ua) =>
             ua.draggable === pair.draggable && ua.dropZone === pair.dropZone
         )
       );
-      score = isCorrect ? 1 : 0;
+      score = isCorrect ? question.scorePerQuestion || 1 : 0;
       break;
 
     default:
@@ -196,4 +194,139 @@ async function syncSubmissions(participantId) {
   }
 }
 
-export { submitAnswer, _evaluateAnswer, syncSubmissions };
+// Add new submitAnswerRoom function
+async function submitAnswerRoom(socket, data) {
+  try {
+    const { userId, roomId, questionId, answerId, clientTimestamp } = data;
+
+    console.log("Processing answer submission:", {
+      userId,
+      roomId,
+      questionId,
+      answerId,
+      clientTimestamp,
+    });
+
+    // Find participant by userId and roomId
+    const participant = await Participant.findOne({
+      user: userId,
+      quizRoom: roomId,
+    })
+      .populate("quizRoom")
+      .populate({
+        path: "remainingQuestions",
+        select:
+          "_id questionText questionType answers options difficulty scorePerQuestion",
+      });
+
+    if (!participant) {
+      throw new Error("Không tìm thấy thông tin người tham gia");
+    }
+
+    console.log("Found participant:", {
+      participantId: participant._id,
+      remainingQuestions: participant.remainingQuestions?.length,
+    });
+
+    // Kiểm tra câu hỏi có trong remainingQuestions không
+    const question = participant.remainingQuestions.find(
+      (q) => q._id.toString() === questionId
+    );
+    if (!question) {
+      throw new Error("Câu hỏi không hợp lệ hoặc đã được làm");
+    }
+
+    console.log("Found question:", {
+      questionId: question._id,
+      type: question.questionType,
+      answers: question.answers?.length,
+    });
+
+    // Tính điểm
+    const { isCorrect, score } = await _evaluateAnswer(question, answerId);
+
+    console.log("Evaluated answer:", { isCorrect, score });
+
+    // Tạo submission
+    const submission = new Submission({
+      participant: participant._id,
+      quizRoom: participant.quizRoom._id,
+      question: question._id,
+      questionType: question.questionType,
+      answerId,
+      answer:
+        question.answers.find((a) => a._id.toString() === answerId)?.text || "",
+      isCorrect,
+      score,
+      timeToAnswer: (new Date() - new Date(clientTimestamp)) / 1000,
+      clientTimestamp,
+    });
+
+    await submission.save();
+    console.log("Saved submission:", submission._id);
+
+    // Xóa câu hỏi khỏi remaining và thêm vào answered
+    participant.remainingQuestions = participant.remainingQuestions.filter(
+      (q) => q._id.toString() !== questionId
+    );
+
+    participant.answeredQuestions.push({
+      questionId: question._id,
+      submissionId: submission._id,
+      answerId: answerId,
+    });
+
+    participant.score += score;
+    participant.lastActive = new Date();
+    await participant.save();
+
+    // Lấy danh sách câu hỏi còn lại với đầy đủ thông tin
+    const remainingQuestions = participant.remainingQuestions.map((q) => ({
+      _id: q._id,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      options: q.options,
+      difficulty: q.difficulty,
+      answers: q.answers.map((a) => ({
+        _id: a._id,
+        text: a.text,
+        isCorrect: false, // Hide correct answers
+      })),
+    }));
+
+    const updateData = {
+      remaining: remainingQuestions,
+      answered: participant.answeredQuestions.map((aq) => ({
+        questionId: aq.questionId,
+        answerId: aq.answerId,
+      })),
+      progress: {
+        answered: participant.answeredQuestions.length,
+        total: participant.answeredQuestions.length + remainingQuestions.length,
+        score: participant.score,
+      },
+      currentQuestion: remainingQuestions[0] || null,
+      lastSubmission: {
+        questionId,
+        isCorrect,
+        score,
+      },
+    };
+
+    // Gửi sự kiện cập nhật về client
+    socket.broadcast
+      .to(`participant_${participant._id}`)
+      .emit("questionsUpdate", updateData);
+    socket.emit("questionsUpdate", updateData);
+
+    return {
+      success: true,
+      data: updateData,
+    };
+  } catch (error) {
+    console.error("Lỗi khi nộp bài:", error);
+    return { success: false, message: error.message };
+  }
+}
+
+export { submitAnswer, submitAnswerRoom, _evaluateAnswer, syncSubmissions };

@@ -444,6 +444,7 @@ export default function JoinQuiz() {
         questionIndex: quizState.currentQuestion,
         userAnswer: -1,
         correct: false,
+        isCorrect: false,
         questionId: quizData.questions[quizState.currentQuestion]?._id || "",
         timeToAnswer: quizData.timePerQuestion - 0, // Full time used
       },
@@ -681,6 +682,7 @@ export default function JoinQuiz() {
           questionId: currentQ?._id || "",
           userAnswer: optionIndex,
           correct,
+          isCorrect: correct,
           score: correct
             ? currentQ?.scorePerQuestion || quizData.scorePerQuestion
             : 0,

@@ -13,7 +13,7 @@ const participantSchema = new mongoose.Schema(
     questionOrder: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
     user: {
       type: String, // Keep as String for Clerk user IDs
-      required: true,
+      // required: true,
     },
     temporaryUsername: { type: String }, // For non-logged in users
     isLoggedIn: { type: Boolean, default: false },

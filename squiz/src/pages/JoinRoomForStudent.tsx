@@ -9,16 +9,9 @@ import {
   ArrowRightIcon,
   Logout02Icon,
   ClockIcon,
-  ChampionIcon,
-  Chart02Icon,
-  ArrowDown01Icon,
-  ArrowUp01Icon,
-  CheckmarkCircle02Icon,
-  Cancel01Icon,
-  Backward01Icon,
 } from "@hugeicons/core-free-icons";
 import "../style/button.css";
-import { useParams, useNavigate } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { Question } from "../types/Question";
 import { motion, AnimatePresence } from "framer-motion";
@@ -108,11 +101,43 @@ interface User {
   imageUrl: string;
 }
 
+// Add these interfaces at the top with other interfaces
+interface ParticipantData {
+  success: boolean;
+  room?: Room;
+  remainingQuestions?: Question[];
+  message?: string;
+}
+
+interface SubmissionResponse {
+  success: boolean;
+  data?: {
+    remaining: Question[];
+    answered: Array<{
+      questionId: string;
+      answerId: string;
+    }>;
+    progress: {
+      answered: number;
+      total: number;
+      score: number;
+    };
+    currentQuestion: Question | null;
+    lastSubmission: {
+      questionId: string;
+      isCorrect: boolean;
+      score: number;
+    };
+  };
+  message?: string;
+}
+
 export default function JoinRoomForStudent() {
   const { code } = useParams();
   const { getToken, userId } = useAuth();
   const { user } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState("");
@@ -160,6 +185,14 @@ export default function JoinRoomForStudent() {
   });
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [remainingQuestions, setRemainingQuestions] = useState([]);
+  const [answeredQuestions, setAnsweredQuestions] = useState([]);
+  const [progress, setProgress] = useState({ answered: 0, total: 0 });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [roomStatus, setRoomStatus] = useState("waiting");
+  const [endTime, setEndTime] = useState<Date | null>(null);
+  const [participantId, setParticipantId] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -233,6 +266,43 @@ export default function JoinRoomForStudent() {
     };
   }, [submitted, code]);
 
+  useEffect(() => {
+    if (location.state?.endTime) {
+      const newEndTime = new Date(location.state.endTime);
+      setEndTime(newEndTime);
+    }
+  }, [location.state]);
+
+  const updateTimeRemaining = () => {
+    if (endTime) {
+      const now = new Date();
+      const remaining = endTime.getTime() - now.getTime();
+
+      if (remaining <= 0) {
+        setTimeRemaining("00:00:00");
+        setRoomStatus("completed");
+        return;
+      }
+
+      const hours = Math.floor(remaining / (1000 * 60 * 60));
+      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+
+      setTimeRemaining(
+        `${hours.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+      );
+    }
+  };
+
+  useEffect(() => {
+    updateTimeRemaining();
+    const interval = setInterval(updateTimeRemaining, 1000);
+
+    return () => clearInterval(interval);
+  }, [endTime]);
+
   const handleJoinRoom = useCallback(
     async (roomData: any) => {
       try {
@@ -240,57 +310,90 @@ export default function JoinRoomForStudent() {
           throw new Error("Socket connection not available");
         }
 
+        console.log("Attempting to join room with data:", {
+          roomCode: roomData.roomCode,
+          userId,
+          userName: user?.fullName,
+        });
+
         // Join room using Socket.IO
         return new Promise((resolve, reject) => {
-          socket.emit(
-            "joinRoom",
-            {
-              roomCode: roomData.roomCode,
-              userId,
-              deviceInfo: {
-                browser: navigator.userAgent,
-                timestamp: new Date().toISOString(),
-              },
+          const joinData = {
+            roomCode: roomData.roomCode,
+            userId,
+            user: {
+              _id: userId,
+              name: user?.fullName,
+              imageUrl: user?.imageUrl,
             },
-            async (response: any) => {
-              if (!response.success) {
-                reject(new Error(response.message || "Failed to join room"));
-                return;
+            deviceInfo: {
+              browser: navigator.userAgent,
+              timestamp: new Date().toISOString(),
+            },
+          };
+
+          console.log("Emitting joinRoom event with data:", joinData);
+
+          socket.emit("joinRoom", joinData, async (response: any) => {
+            console.log("Received joinRoom response:", response);
+
+            if (!response.success) {
+              console.error("Join room failed:", response.message);
+              reject(new Error(response.message || "Failed to join room"));
+              return;
+            }
+
+            try {
+              // If we have questions from the response, use them
+              if (
+                response.remainingQuestions &&
+                response.remainingQuestions.length > 0
+              ) {
+                console.log("Using questions from socket response:", {
+                  count: response.remainingQuestions.length,
+                });
+                setQuestions(response.remainingQuestions);
+                setShowQuestions(true);
               }
 
-              try {
-                // Refresh room data after joining
-                const token = await getToken();
-                const updatedResponse = await fetch(
-                  `http://localhost:5000/api/quizRoom/code/${roomData.roomCode}`,
-                  {
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                      "Content-Type": "application/json",
-                    },
-                  }
-                );
-                const updatedData = await updatedResponse.json();
-                if (updatedData.success) {
-                  resolve(updatedData.data);
-                } else {
-                  reject(
-                    new Error(
-                      updatedData.message || "Failed to get updated room data"
-                    )
-                  );
+              // Refresh room data after joining
+              const token = await getToken();
+              const updatedResponse = await fetch(
+                `http://localhost:5000/api/quizRoom/code/${roomData.roomCode}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
                 }
-              } catch (error) {
-                reject(error);
+              );
+              const updatedData = await updatedResponse.json();
+              if (updatedData.success) {
+                console.log("Room data updated after join:", updatedData.data);
+                resolve(updatedData.data);
+              } else {
+                console.error(
+                  "Failed to get updated room data:",
+                  updatedData.message
+                );
+                reject(
+                  new Error(
+                    updatedData.message || "Failed to get updated room data"
+                  )
+                );
               }
+            } catch (error) {
+              console.error("Error in join room callback:", error);
+              reject(error);
             }
-          );
+          });
         });
       } catch (error) {
+        console.error("Error in handleJoinRoom:", error);
         throw error;
       }
     },
-    [socket, userId, getToken]
+    [socket, userId, getToken, user]
   );
 
   const fetchAllUsers = useCallback(async () => {
@@ -354,6 +457,7 @@ export default function JoinRoomForStudent() {
       }
 
       // First fetch room data
+      console.log("Fetching room data...");
       const response = await fetch(
         `http://localhost:5000/api/quizRoom/code/${code}`,
         {
@@ -371,13 +475,10 @@ export default function JoinRoomForStudent() {
       const data = await response.json();
       if (data.success) {
         console.log("Room data received:", {
-          room: data.data,
-          participants: data.data.participants,
-          currentUser: {
-            id: userId,
-            name: user.fullName,
-            imageUrl: user.imageUrl,
-          },
+          roomId: data.data._id,
+          status: data.data.status,
+          participants: data.data.participants?.length,
+          quiz: data.data.quiz?._id,
         });
 
         // Set room data
@@ -387,11 +488,26 @@ export default function JoinRoomForStudent() {
         console.log("Fetching all users after room data...");
         await fetchAllUsers();
 
-        // Fetch quiz if available
-        if (data.data.quiz) {
-          console.log("Fetching quiz with ID:", data.data.quiz._id);
-          const quizResponse = await fetch(
-            `http://localhost:5000/api/quiz/${data.data.quiz._id}`,
+        // Check if user is already a participant
+        const isParticipant = data.data.participants?.some((p: any) => {
+          const participantUserId =
+            typeof p.user === "string" ? p.user : p.user?._id;
+          const isMatch = participantUserId === userId;
+          console.log("Checking participant:", {
+            participantId: p._id,
+            participantUserId,
+            currentUserId: userId,
+            isMatch,
+          });
+          return isMatch;
+        });
+        console.log("Is user a participant?", isParticipant);
+
+        if (isParticipant) {
+          // Get existing participant's questions
+          console.log("Fetching existing participant's questions...");
+          const participantResponse = await fetch(
+            `http://localhost:5000/api/participant/status/${userId}?roomId=${data.data._id}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -400,23 +516,36 @@ export default function JoinRoomForStudent() {
             }
           );
 
-          if (!quizResponse.ok) {
-            throw new Error(
-              `Failed to fetch exam set: ${quizResponse.statusText}`
+          if (participantResponse.ok) {
+            const participantData = await participantResponse.json();
+            console.log("Received participant data:", participantData);
+
+            if (participantData.success && participantData.data) {
+              console.log("Setting questions from existing participant:", {
+                questionCount: participantData.data.remainingQuestions?.length,
+              });
+              const remainingQuestions =
+                participantData.data.remainingQuestions || [];
+              setQuestions(remainingQuestions);
+              setShowQuestions(true);
+            } else {
+              console.error(
+                "Failed to get participant data:",
+                participantData.message
+              );
+            }
+          } else {
+            console.error(
+              "Failed to fetch participant status:",
+              participantResponse.statusText
             );
           }
-
-          const quizData = await quizResponse.json();
-          console.log("Quiz data received:", quizData);
-
-          if (quizData && quizData.questions) {
-            setQuestions(quizData.questions);
-            setShowQuestions(false);
-          } else {
-            console.error("No questions found in quiz data:", quizData);
-          }
         } else {
-          console.error("No examSetId found in room data:", data.data);
+          // Join room as a new participant
+          console.log("Joining room as new participant...");
+          const joinResponse = await handleJoinRoom(data.data);
+          console.log("Join room response:", joinResponse);
+          setRoom(joinResponse as Room);
         }
       } else {
         throw new Error(data.message || "Không thể tải dữ liệu phòng");
@@ -426,7 +555,7 @@ export default function JoinRoomForStudent() {
     } finally {
       setLoading(false);
     }
-  }, [code, getToken, user, userId, fetchAllUsers]);
+  }, [code, getToken, user, userId, fetchAllUsers, handleJoinRoom]);
 
   useEffect(() => {
     getRoom();
@@ -514,10 +643,10 @@ export default function JoinRoomForStudent() {
       // Calculate results before submitting
       const results: QuizResults = {
         score: Object.entries(selectedAnswers).reduce(
-          (total, [questionId, answer]) => {
+          (total, [questionId, answerId]) => {
             const question = questions.find((q) => q._id === questionId);
             const isCorrect =
-              question?.answers.find((a) => a.isCorrect)?.text === answer;
+              question?.answers.find((a) => a.isCorrect)?.text === answerId;
             return total + (isCorrect ? 1 : 0);
           },
           0
@@ -525,18 +654,18 @@ export default function JoinRoomForStudent() {
         stats: {
           totalQuestions: questions.length,
           correctAnswers: Object.entries(selectedAnswers).filter(
-            ([questionId, answer]) => {
+            ([questionId, answerId]) => {
               const question = questions.find((q) => q._id === questionId);
               return (
-                question?.answers.find((a) => a.isCorrect)?.text === answer
+                question?.answers.find((a) => a.isCorrect)?.text === answerId
               );
             }
           ).length,
           incorrectAnswers: Object.entries(selectedAnswers).filter(
-            ([questionId, answer]) => {
+            ([questionId, answerId]) => {
               const question = questions.find((q) => q._id === questionId);
               return (
-                question?.answers.find((a) => a.isCorrect)?.text !== answer
+                question?.answers.find((a) => a.isCorrect)?.text !== answerId
               );
             }
           ).length,
@@ -550,16 +679,16 @@ export default function JoinRoomForStudent() {
 
       // Prepare answers array for submission
       const answersArray = Object.entries(selectedAnswers).map(
-        ([questionId, answer]) => {
+        ([questionId, answerId]) => {
           const question = questions.find((q) => q._id === questionId);
           const correctAnswer =
             question?.answers.find((a) => a.isCorrect)?.text ||
             "Không xác định";
           return {
             questionId,
-            userAnswer: answer,
+            userAnswer: answerId,
             correctAnswer,
-            isCorrect: answer === correctAnswer,
+            isCorrect: answerId === correctAnswer,
           };
         }
       );
@@ -750,42 +879,106 @@ export default function JoinRoomForStudent() {
     }
   }, [room?.status, calculateTimeRemaining]);
 
+  // Update socket event handlers
   useEffect(() => {
-    // Initialize socket connection
+    if (!socket || !room) return;
+
+    console.log("Setting up socket listeners for room:", room._id);
+
+    // Listen for participant updates
+    socket.on("participantJoined", async (data) => {
+      console.log("Received participantJoined event:", data);
+
+      if (data.roomId === room._id) {
+        // Fetch the latest room data
+        try {
+          const token = await getToken();
+          const response = await fetch(
+            `http://localhost:5000/api/quizRoom/code/${code}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (response.ok) {
+            const updatedData = await response.json();
+            if (updatedData.success) {
+              console.log("Updated room data:", updatedData.data);
+              setRoom(updatedData.data);
+              // Fetch latest user data
+              await fetchAllUsers();
+            }
+          }
+        } catch (error) {
+          console.error("Error updating room data:", error);
+        }
+      }
+    });
+
+    // Listen for participant left
+    socket.on("participantLeft", async (data) => {
+      console.log("Received participantLeft event:", data);
+
+      if (data.roomId === room._id) {
+        // Fetch the latest room data
+        try {
+          const token = await getToken();
+          const response = await fetch(
+            `http://localhost:5000/api/quizRoom/code/${code}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (response.ok) {
+            const updatedData = await response.json();
+            if (updatedData.success) {
+              console.log(
+                "Updated room data after participant left:",
+                updatedData.data
+              );
+              setRoom(updatedData.data);
+            }
+          }
+        } catch (error) {
+          console.error("Error updating room data:", error);
+        }
+      }
+    });
+
+    // Join the room's socket channel
+    socket.emit("joinUserRoomManager", room._id);
+
+    return () => {
+      socket.off("participantJoined");
+      socket.off("participantLeft");
+    };
+  }, [socket, room, code, getToken, fetchAllUsers]);
+
+  // Update room status effect to handle questions
+  useEffect(() => {
+    if (room?.status === "active") {
+      setShowQuestions(true);
+    }
+  }, [room?.status]);
+
+  // Initialize socket connection
+  useEffect(() => {
     const newSocket = io("http://localhost:5000");
     setSocket(newSocket);
 
     return () => {
-      if (newSocket) newSocket.disconnect();
+      if (newSocket) {
+        newSocket.disconnect();
+      }
     };
   }, []);
-
-  const handleAnswerSelect = useCallback(
-    (questionId: string, answer: string) => {
-      if (!questionId) return;
-
-      setSelectedAnswers((prev: any) => {
-        const newAnswers = {
-          ...prev,
-          [questionId]: answer,
-        };
-
-        // Save to localStorage
-        localStorage.setItem(
-          `quiz_answers_${code}`,
-          JSON.stringify(newAnswers)
-        );
-
-        return newAnswers;
-      });
-
-      // Add haptic feedback effect
-      if (window.navigator && window.navigator.vibrate) {
-        window.navigator.vibrate(50);
-      }
-    },
-    [code]
-  );
 
   const handleNextQuestion = useCallback(() => {
     if (currentQuestionIndex < questions.length - 1) {
@@ -820,6 +1013,53 @@ export default function JoinRoomForStudent() {
       }, 200);
     }
   }, [currentQuestionIndex, code]);
+
+  const handleAnswerSelect = useCallback(
+    (questionId: string, answerId: string) => {
+      if (!questionId || !socket || !room?._id) return;
+
+      setSelectedAnswers((prev: any) => {
+        const newAnswers = {
+          ...prev,
+          [questionId]: answerId,
+        };
+
+        // Save to localStorage
+        localStorage.setItem(
+          `quiz_answers_${code}`,
+          JSON.stringify(newAnswers)
+        );
+
+        // Submit answer to server using new method
+        socket.emit(
+          "submitAnswerRoom",
+          {
+            userId,
+            roomId: room._id,
+            questionId,
+            answerId,
+            clientTimestamp: new Date().toISOString(),
+          },
+          (response: SubmissionResponse) => {
+            console.log("Answer submission response:", response);
+
+            if (response.success && response.data) {
+              // Do not update questions to prevent auto-advancing
+              console.log("Answer submitted successfully");
+            }
+          }
+        );
+
+        return newAnswers;
+      });
+
+      // Add haptic feedback effect
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+    },
+    [code, socket, userId, room?._id]
+  );
 
   const handleCopy = useCallback(
     (type: string) => {
@@ -876,7 +1116,7 @@ export default function JoinRoomForStudent() {
   );
 
   const renderQuestion = useCallback(() => {
-    const currentQ = questions[currentQuestionIndex] as Question;
+    const currentQ = questions[currentQuestionIndex];
     if (!currentQ) return null;
 
     // Calculate time progress
@@ -960,7 +1200,7 @@ export default function JoinRoomForStudent() {
               className="h-80 flex justify-center row-span-2 items-center overflow-auto py-4 px-16 text-center bg-gray-900 rounded-lg shadow-inner"
             >
               <pre className="text-orange text-2xl font-bold whitespace-pre-wrap">
-                {currentQ?.questionText}
+                {currentQ?.questionText || "Loading question..."}
               </pre>
             </motion.div>
           </AnimatePresence>
@@ -968,9 +1208,9 @@ export default function JoinRoomForStudent() {
           {/* Answer options */}
           <div className="flex flex-col mt-2 mb-5 row-span-3">
             <div className="grid grid-cols-4 gap-3 h-full mt-2 mb-5">
-              {currentQ?.answers.map((option: any, index: number) => {
+              {(currentQ?.answers || []).map((option: any, index: number) => {
                 const isSelected =
-                  selectedAnswers[currentQ._id || ""] === option.text;
+                  selectedAnswers[currentQ._id || ""] === option._id;
                 const cardColors = [
                   { bg: "mediumturquoise", accent: "lightblue" },
                   { bg: "#9c27b0", accent: "#ce93d8" },
@@ -980,7 +1220,7 @@ export default function JoinRoomForStudent() {
 
                 return (
                   <motion.button
-                    key={index}
+                    key={option._id}
                     custom={index}
                     variants={answerVariants}
                     initial="hidden"
@@ -988,7 +1228,7 @@ export default function JoinRoomForStudent() {
                     whileHover="hover"
                     whileTap={{ scale: 0.95 }}
                     onClick={() =>
-                      handleAnswerSelect(currentQ._id || "", option.text)
+                      handleAnswerSelect(currentQ._id || "", option._id)
                     }
                     className={`answer-card relative overflow-hidden ${
                       isSelected ? "selected" : ""
@@ -1348,6 +1588,42 @@ export default function JoinRoomForStudent() {
         box-shadow: inset 0px 0px 0px 30px #4bb71b;
       }
     }
+
+    .answer-feedback {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      border-radius: 10px;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      z-index: 1000;
+      animation: feedbackPop 0.5s ease-out;
+    }
+
+    .answer-feedback.correct {
+      background-color: #4CAF50;
+    }
+
+    .answer-feedback.incorrect {
+      background-color: #F44336;
+    }
+
+    @keyframes feedbackPop {
+      0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.2);
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+    }
   `;
 
   if (loading) {
@@ -1361,7 +1637,7 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  if (error) {
+  if (!room) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
         <div className="text-xl text-red-500 p-6 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
@@ -1380,15 +1656,38 @@ export default function JoinRoomForStudent() {
               />
             </svg>
           </div>
-          <p className="text-center">{error}</p>
+          <p className="text-center">Không thể tải dữ liệu phòng</p>
         </div>
       </div>
     );
   }
 
-  if (!showQuestions && !submitted) {
+  if (submitted && quizResults) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full ">
+      <QuizResults
+        score={quizResults?.score || 0}
+        totalQuestions={quizResults?.stats.totalQuestions || 0}
+        stats={quizResults?.stats || {}}
+        answers={quizResults?.answers.map((answer) => ({
+          ...answer,
+          question:
+            questions.find((q) => q._id === answer.questionId)?.questionText ||
+            "Câu hỏi không có sẵn",
+        }))}
+        questions={questions
+          .filter((q): q is Question & { _id: string } => q._id !== undefined)
+          .map((q) => ({
+            _id: q._id as string,
+            questionText: q.questionText,
+            answers: q.answers,
+          }))}
+      />
+    );
+  }
+
+  if (!showQuestions || room.status === "waiting") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full">
         <main className="flex flex-col justify-center items-center">
           <style>{styles}</style>
           <div className="flex justify-end w-full py-2 px-8">
@@ -1522,60 +1821,26 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  if (submitted && quizResults) {
+  if (questions.length === 0) {
     return (
-      <QuizResults
-        score={quizResults?.score || 0}
-        totalQuestions={quizResults?.stats.totalQuestions || 0}
-        stats={quizResults?.stats || {}}
-        answers={quizResults?.answers.map((answer) => ({
-          ...answer,
-          question:
-            questions.find((q) => q._id === answer.questionId)?.questionText ||
-            "Câu hỏi không có sẵn",
-        }))}
-        questions={questions
-          .filter((q): q is Question & { _id: string } => q._id !== undefined)
-          .map((q) => ({
-            _id: q._id as string,
-            questionText: q.questionText,
-            answers: q.answers,
-          }))}
-      />
-    );
-  }
-
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-950 via-indigo-950 to-purple-950 text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 bg-indigo-900/40 backdrop-blur-md rounded-2xl shadow-2xl border border-indigo-700/40 flex flex-col items-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-purple-900/30">
-            <HugeiconsIcon icon={CheckmarkCircle02Icon} />
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2 text-cyan-100">
-            Bài thi hoàn thành!
-          </h2>
-          <p className="text-cyan-200 text-center mb-8">
-            Kết quả của bạn đã được lưu. Bạn có thể xem chi tiết tại trang cá
-            nhân.
-          </p>
-
-          <div className="w-full space-y-3">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-semibold hover:opacity-90 transition-colors shadow-lg shadow-purple-900/30"
+      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
+        <div className="text-xl text-yellow-500 p-6 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
+          <div className="flex items-center justify-center mb-4">
+            <svg
+              className="w-12 h-12 text-yellow-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              Quay lại trang chủ
-            </button>
-
-            <button
-              onClick={() => console.log("View all results")}
-              className="w-full py-3 bg-indigo-800/60 text-cyan-100 rounded-xl font-medium hover:bg-indigo-700/60 transition-colors border border-indigo-700/40"
-            >
-              Xem tất cả kết quả
-            </button>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
           </div>
+          <p className="text-center">Đang chờ câu hỏi từ giáo viên...</p>
         </div>
       </div>
     );

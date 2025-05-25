@@ -1,16 +1,23 @@
 export interface Question {
-  _id?: string;
-  questionId: number;
-  quizId: string;
-  questionType: string;
+  _id: string;
   questionText: string;
-  timePerQuestion: number;
-  scorePerQuestion: number;
+  questionType: string;
   difficulty: string;
-  answers: answers[];
+  answers: Answer[];
+  timePerQuestion?: number;
+  scorePerQuestion?: number;
+  quizId?: string;
+  questionId?: number;
 }
 
-export interface answers {
+export interface Answer {
   text: string;
+  isCorrect: boolean;
+}
+
+export interface SubmittedAnswer {
+  questionId: string;
+  userAnswer: string;
+  correctAnswer: string;
   isCorrect: boolean;
 }

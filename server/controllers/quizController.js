@@ -151,11 +151,57 @@ const getQuizById = async (req, res) => {
 
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
+    // Kiểm tra xem người dùng đã tham gia phòng chưa
+    const participant = await Participant.findOne({
+      quizRoom: quiz._id,
+      user: req.auth.userId,
+    }).populate("remainingQuestions");
+
+    if (participant) {
+      // Nếu đã tham gia, sử dụng bộ câu hỏi đã lưu
+      console.log("Using saved questions for existing participant");
+      quiz.questions = [
+        ...participant.remainingQuestions,
+        ...participant.answeredQuestions.map((a) => a.questionId),
+      ];
+    } else if (
+      quiz.questionBankQueries &&
+      quiz.questionBankQueries.length > 0
+    ) {
+      // Nếu chưa tham gia và có questionBankQueries, tạo bộ câu hỏi mới
+      console.log("Generating new questions from question bank");
+      const allQuestions = [];
+
+      for (const criteria of quiz.questionBankQueries) {
+        const { questionBankId, difficulty, limit } = criteria;
+        console.log(`Fetching questions for bank ${questionBankId}`);
+
+        const filter = {
+          examId: new mongoose.Types.ObjectId(questionBankId.toString()),
+        };
+        if (Array.isArray(difficulty) && difficulty.length > 0) {
+          filter.difficulty = { $in: difficulty };
+        }
+
+        const matched = await Question.find(filter);
+        console.log(`Found ${matched.length} matching questions`);
+
+        const shuffled = matched.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, limit);
+        allQuestions.push(...selected);
+      }
+
+      // Trộn tất cả câu hỏi
+      quiz.questions = allQuestions.sort(() => 0.5 - Math.random());
+      console.log(`Generated ${quiz.questions.length} new questions`);
+    }
+
     res.json({
       success: true,
       data: quiz,
     });
   } catch (error) {
+    console.error("Error in getQuizById:", error);
     res.status(500).json({ error: error.message });
   }
 };
