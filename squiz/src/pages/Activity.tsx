@@ -16,6 +16,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { NavLink } from "react-router";
 import "../style/quizcard.css";
+import SpinnerLoading from "../components/SpinnerLoading";
 
 interface QuizPracticeResult {
   participationId: string;
@@ -191,14 +192,7 @@ export default function Activity() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-orange border-t-transparent rounded-full animate-spin mb-4"></div>
-          <div className="text-xl">Đang tải dữ liệu...</div>
-        </div>
-      </div>
-    );
+    return <SpinnerLoading />;
   }
 
   if (error) {
@@ -244,197 +238,230 @@ export default function Activity() {
       {/* Practice Results */}
       {activeTab === "practice" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {quizPracticeResults.map((history) => (
-            <div
-              key={history.participationId}
-              className="bg-white box-shadow hover:shadow-xl transition-all duration-300 cursor-pointer quizcard_component rounded-xl w-full"
-            >
-              <div className="noise  rounded-2xl"></div>
-              <div className="relative quizcard_component">
-                <img
-                  src={
-                    history.quiz.imageUrl || "/assets/default-quiz-cover.jpg"
-                  }
-                  alt={history.quiz.name}
-                  className="w-full h-64 object-cover rounded-t-xl"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+          {quizPracticeResults.length > 0 ? (
+            quizPracticeResults.map((history) => (
+              <div
+                key={history.participationId}
+                className="bg-white box-shadow hover:shadow-xl transition-all duration-300 cursor-pointer quizcard_component rounded-xl w-full"
+              >
+                <div className="noise  rounded-2xl"></div>
+                <div className="relative quizcard_component">
+                  <img
+                    src={
+                      history.quiz.imageUrl || "/assets/default-quiz-cover.jpg"
+                    }
+                    alt={history.quiz.name}
+                    className="w-full h-64 object-cover rounded-t-xl"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
 
-                <div className="absolute top-4 right-4">
-                  <p
-                    className={`py-1 px-4 text-sm text-white font-semibold rounded-full ${
-                      history.quiz.difficulty === "easy"
-                        ? "bg-green-500"
+                  <div className="absolute top-4 right-4">
+                    <p
+                      className={`py-1 px-4 text-sm text-white font-semibold rounded-full ${
+                        history.quiz.difficulty === "easy"
+                          ? "bg-green-500"
+                          : history.quiz.difficulty === "medium"
+                          ? "bg-orange"
+                          : "bg-red-wine"
+                      }`}
+                    >
+                      {history.quiz.difficulty === "easy"
+                        ? "Dễ"
                         : history.quiz.difficulty === "medium"
-                        ? "bg-orange"
-                        : "bg-red-wine"
-                    }`}
-                  >
-                    {history.quiz.difficulty === "easy"
-                      ? "Dễ"
-                      : history.quiz.difficulty === "medium"
-                      ? "Trung bình"
-                      : "Khó"}
-                  </p>
+                        ? "Trung bình"
+                        : "Khó"}
+                    </p>
+                  </div>
+
+                  <h3 className="absolute bottom-4 left-4 right-4 text-xl font-bold text-white">
+                    {history.quiz.name}
+                  </h3>
                 </div>
 
-                <h3 className="absolute bottom-4 left-4 right-4 text-xl font-bold text-white">
-                  {history.quiz.name}
-                </h3>
-              </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon
+                        icon={HelpSquareIcon}
+                        size={20}
+                        color="#FF5733"
+                      />
+                      <span className="font-medium">
+                        {history.stats.totalQuestions} câu hỏi
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-500">Điểm số cao nhất</p>
+                      <p className="font-bold text-lg">{history.score}</p>
+                    </div>
+                  </div>
 
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={HelpSquareIcon}
-                      size={20}
-                      color="#FF5733"
-                    />
-                    <span className="font-medium">
-                      {history.stats.totalQuestions} câu hỏi
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Tỷ lệ đúng</span>
+                      <span>{history.stats.correctPercentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-orange h-2 rounded-full"
+                        style={{ width: `${history.stats.correctPercentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-sm text-gray-500 mb-4">
+                    <span>
+                      Tham gia:{" "}
+                      {format(new Date(history.joinedAt), "dd/MM/yyyy")}
+                    </span>
+                    <span>
+                      {history.stats.correctAnswers}/
+                      {history.stats.totalQuestions} câu đúng
                     </span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-500">Điểm số cao nhất</p>
-                    <p className="font-bold text-lg">{history.score}</p>
+
+                  <div className="flex gap-3">
+                    <button
+                      className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-gray-300 btn-hover w-1/3"
+                      onClick={() => modalPlay(history.quiz)}
+                    >
+                      <span className="font-medium">Chi tiết</span>
+                    </button>
+
+                    <NavLink
+                      to={`/join-quiz/${history.quiz._id}`}
+                      className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-orange btn-hover w-2/3"
+                    >
+                      <span className="text-darkblue font-bold">Chơi lại</span>
+                      <HugeiconsIcon
+                        icon={PlayIcon}
+                        size={20}
+                        color="#0A0A3F"
+                      />
+                    </NavLink>
                   </div>
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Tỷ lệ đúng</span>
-                    <span>{history.stats.correctPercentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-orange h-2 rounded-full"
-                      style={{ width: `${history.stats.correctPercentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between text-sm text-gray-500 mb-4">
-                  <span>
-                    Tham gia: {format(new Date(history.joinedAt), "dd/MM/yyyy")}
-                  </span>
-                  <span>
-                    {history.stats.correctAnswers}/
-                    {history.stats.totalQuestions} câu đúng
-                  </span>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-gray-300 btn-hover w-1/3"
-                    onClick={() => modalPlay(history.quiz)}
-                  >
-                    <span className="font-medium">Chi tiết</span>
-                  </button>
-
-                  <NavLink
-                    to={`/join-quiz/${history.quiz._id}`}
-                    className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-orange btn-hover w-2/3"
-                  >
-                    <span className="text-darkblue font-bold">Chơi lại</span>
-                    <HugeiconsIcon icon={PlayIcon} size={20} color="#0A0A3F" />
-                  </NavLink>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="col-span-full text-center text-gray-400">
+              <img
+                src="/assets/activity_empty.png"
+                alt="empty-quiz"
+                className="w-60 mx-auto"
+              />
+              <p className="mt-2 text-xl font-semibold">
+                Không có kết quả luyện tập nào
+              </p>
             </div>
-          ))}
+          )}
         </div>
       )}
 
       {/* Exam Results */}
       {activeTab === "exam" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {quizRoomResults.map((result) => (
-            <div
-              key={result.participationId}
-              onClick={() => handleExamClick(result)}
-              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300 cursor-pointer"
-            >
-              {/* Quiz Room Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-orange mb-2">
-                    {result.quizRoom.quiz.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                      {result.quizRoom.quiz.topic}
-                    </span>
-                    <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                      {result.quizRoom.quiz.difficulty}
-                    </span>
-                    <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                      Mã phòng: {result.quizRoom.roomCode}
-                    </span>
+          {quizRoomResults.length > 0 ? (
+            quizRoomResults.map((result) => (
+              <div
+                key={result.participationId}
+                onClick={() => handleExamClick(result)}
+                className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300 cursor-pointer"
+              >
+                {/* Quiz Room Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-xl font-semibold text-orange mb-2">
+                      {result.quizRoom.quiz.name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
+                        {result.quizRoom.quiz.topic}
+                      </span>
+                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
+                        {result.quizRoom.quiz.difficulty}
+                      </span>
+                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
+                        Mã phòng: {result.quizRoom.roomCode}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-orange">
+                      {result.score}/{result.stats.totalQuestions}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {new Date(result.joinedAt).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-orange">
-                    {result.score}/{result.stats.totalQuestions}
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    {new Date(result.joinedAt).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-gray-700/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                    <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />
-                    <span>Đúng</span>
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-gray-700/30 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                      <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />
+                      <span>Đúng</span>
+                    </div>
+                    <div className="text-lg font-semibold text-green-400">
+                      {result.stats.correctAnswers}
+                    </div>
                   </div>
-                  <div className="text-lg font-semibold text-green-400">
-                    {result.stats.correctAnswers}
+                  <div className="bg-gray-700/30 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                      <HugeiconsIcon icon={Cancel01Icon} size={16} />
+                      <span>Sai</span>
+                    </div>
+                    <div className="text-lg font-semibold text-red-400">
+                      {result.stats.incorrectAnswers}
+                    </div>
                   </div>
                 </div>
-                <div className="bg-gray-700/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                    <HugeiconsIcon icon={Cancel01Icon} size={16} />
-                    <span>Sai</span>
-                  </div>
-                  <div className="text-lg font-semibold text-red-400">
-                    {result.stats.incorrectAnswers}
-                  </div>
-                </div>
-              </div>
 
-              {/* Progress Bar */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-400 mb-1">
-                  <span>Tỷ lệ đúng</span>
-                  <span>{result.stats.correctPercentage}%</span>
+                {/* Progress Bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm text-gray-400 mb-1">
+                    <span>Tỷ lệ đúng</span>
+                    <span>{result.stats.correctPercentage}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-orange to-red-500 transition-all duration-500"
+                      style={{ width: `${result.stats.correctPercentage}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-orange to-red-500 transition-all duration-500"
-                    style={{ width: `${result.stats.correctPercentage}%` }}
-                  />
-                </div>
-              </div>
 
-              {/* Additional Info */}
-              <div className="flex items-center justify-between text-sm text-gray-400">
-                <div className="flex items-center gap-1">
-                  <HugeiconsIcon icon={ClockIcon} size={16} />
-                  <span>
-                    {Math.floor(result.stats.timeSpent / 60)} phút{" "}
-                    {result.stats.timeSpent % 60} giây
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <HugeiconsIcon icon={Chart02Icon} size={16} />
-                  <span>Thời gian: {result.quizRoom.durationMinutes} phút</span>
+                {/* Additional Info */}
+                <div className="flex items-center justify-between text-sm text-gray-400">
+                  <div className="flex items-center gap-1">
+                    <HugeiconsIcon icon={ClockIcon} size={16} />
+                    <span>
+                      {Math.floor(result.stats.timeSpent / 60)} phút{" "}
+                      {result.stats.timeSpent % 60} giây
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <HugeiconsIcon icon={Chart02Icon} size={16} />
+                    <span>
+                      Thời gian: {result.quizRoom.durationMinutes} phút
+                    </span>
+                  </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="col-span-full text-center text-gray-400">
+              <img
+                src="/assets/activity_empty.png"
+                alt="empty-quiz"
+                className="w-60 mx-auto"
+              />
+              <p className="mt-2 text-xl font-semibold">
+                Không có kết quả bài thi nào
+              </p>
             </div>
-          ))}
+          )}
         </div>
       )}
 

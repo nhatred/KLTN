@@ -16,6 +16,7 @@ import { useAuth, useUser } from "@clerk/clerk-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { io, Socket } from "socket.io-client";
 import QuizResults from "../components/QuizResults";
+import SpinnerLoading from "../components/SpinnerLoading";
 
 interface ServerResponse {
   success: boolean;
@@ -1626,14 +1627,7 @@ export default function JoinRoomForStudent() {
   }, [code]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-orange border-t-transparent rounded-full animate-spin mb-4"></div>
-          <div className="text-xl">Đang tải dữ liệu phòng...</div>
-        </div>
-      </div>
-    );
+    return <SpinnerLoading />;
   }
 
   if (!room) {

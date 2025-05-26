@@ -1,0 +1,13 @@
+/* Scrollbar on a specific container */
+::-webkit-scrollbar {
+  width: 0.4rem;
+}
+
+::-webkit-scrollbar-track {
+  background: #bdb8b4;
+}
+
+::-webkit-scrollbar-thumb {
+  background: -webkit-radial-gradient(circle, #ff2c06 0%, #ff790b 100%);
+  border-radius: 10px;
+}

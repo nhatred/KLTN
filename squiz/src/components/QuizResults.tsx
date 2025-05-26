@@ -82,7 +82,7 @@ export default function QuizResults({
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div>
+          <div className="">
             <h2 className="text-4xl font-bold">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
                 Kết quả
@@ -220,7 +220,7 @@ export default function QuizResults({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               transition={{ duration: 0.3 }}
-              className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar"
+              className="space-y-4 max-h-[40vh] overflow-y-auto pb-2 pr-2 custom-scrollbar"
             >
               {answers.map((answer, index) => {
                 const question = questions.find(
@@ -241,13 +241,14 @@ export default function QuizResults({
                     }`}
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                      <div className="grid grid-cols-12 items-center gap-3">
                         <span className="bg-orange text-darkblue text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center">
                           {index + 1}
                         </span>
-                        <h4 className="font-medium text-lg text-cyan-100">
-                          Câu hỏi {index + 1}
-                        </h4>
+
+                        <p className="text-cyan-100 text-lg col-span-10">
+                          {question?.questionText || "Câu hỏi không có sẵn"}
+                        </p>
                       </div>
                       {answer.isCorrect ? (
                         <div className="flex items-center gap-2 text-emerald-400">
@@ -260,12 +261,6 @@ export default function QuizResults({
                           <span className="font-medium">Sai</span>
                         </div>
                       )}
-                    </div>
-
-                    <div className="mb-4">
-                      <p className="text-cyan-100 text-lg mb-2">
-                        {question?.questionText || "Câu hỏi không có sẵn"}
-                      </p>
                     </div>
 
                     <div className="space-y-3 bg-black/20 p-4 rounded-lg">

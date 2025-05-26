@@ -3,12 +3,12 @@ import { useUser, useAuth } from "@clerk/clerk-react";
 import { format } from "date-fns";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PlayIcon, HelpSquareIcon } from "@hugeicons/core-free-icons";
-import Loading from "./Loading";
+
 import { NavLink } from "react-router";
 import QuizDetailModal from "./QuizDetailModal";
 import { Quiz, QuizHistory } from "../types/Quiz";
 import { useQuiz } from "../contexts/QuizContext";
-
+import SpinnerLoading from "../components/SpinnerLoading";
 
 export default function HostedQuizzes() {
   const { user } = useUser();
@@ -29,8 +29,8 @@ export default function HostedQuizzes() {
           `http://localhost:5000/api/quiz/history/${user.id}`,
           {
             headers: {
-              "Authorization": `Bearer ${token}`
-            }
+              Authorization: `Bearer ${token}`,
+            },
           }
         );
 
@@ -41,24 +41,32 @@ export default function HostedQuizzes() {
         const data = await response.json();
         if (data.success) {
           // Filter to get only the highest score attempt for each quiz
-          const uniqueQuizzes = data.data.reduce((acc: QuizHistory[], current: QuizHistory) => {
-            const existingQuiz = acc.find(item => item.quiz._id === current.quiz._id);
-            
-            if (!existingQuiz) {
-              // If this quiz hasn't been added yet, add it
-              acc.push(current);
-            } else if (current.score > existingQuiz.score) {
-              // If this attempt has a higher score, replace the existing one
-              const index = acc.findIndex(item => item.quiz._id === current.quiz._id);
-              acc[index] = current;
-            }
-            
-            return acc;
-          }, []);
+          const uniqueQuizzes = data.data.reduce(
+            (acc: QuizHistory[], current: QuizHistory) => {
+              const existingQuiz = acc.find(
+                (item) => item.quiz._id === current.quiz._id
+              );
+
+              if (!existingQuiz) {
+                // If this quiz hasn't been added yet, add it
+                acc.push(current);
+              } else if (current.score > existingQuiz.score) {
+                // If this attempt has a higher score, replace the existing one
+                const index = acc.findIndex(
+                  (item) => item.quiz._id === current.quiz._id
+                );
+                acc[index] = current;
+              }
+
+              return acc;
+            },
+            []
+          );
 
           // Sort by joinedAt in descending order (most recent first)
-          uniqueQuizzes.sort((a: QuizHistory, b: QuizHistory) => 
-            new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+          uniqueQuizzes.sort(
+            (a: QuizHistory, b: QuizHistory) =>
+              new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
           );
 
           setQuizHistory(uniqueQuizzes);
@@ -79,15 +87,26 @@ export default function HostedQuizzes() {
   };
 
   if (loading) {
-    return <Loading />;
+    return (
+      <div className="h-80 flex justify-center items-end">
+        <SpinnerLoading />
+      </div>
+    );
   }
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">Lịch sử tham gia</h2>
+      <h2 className="text-2xl font-bold mb-6 h-full">Lịch sử tham gia</h2>
       {quizHistory.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500">Bạn chưa tham gia quiz nào</p>
+        <div className="col-span-full text-center text-gray-400">
+          <img
+            src="/assets/activity_empty.png"
+            alt="empty-quiz"
+            className="w-60 mx-auto"
+          />
+          <p className="mt-2 text-xl font-semibold">
+            Bạn chưa tham gia quiz nào
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -99,21 +118,29 @@ export default function HostedQuizzes() {
               <div className="noise rounded-2xl"></div>
               <div className="relative quizcard_component">
                 <img
-                  src={history.quiz.imageUrl || "/assets/default-quiz-cover.jpg"}
+                  src={
+                    history.quiz.imageUrl || "/assets/default-quiz-cover.jpg"
+                  }
                   alt={history.quiz.name}
                   className="w-full h-64 object-cover rounded-t-xl"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                
+
                 <div className="absolute top-4 right-4">
-                  <p className={`py-1 px-4 text-sm text-white font-semibold rounded-full ${
-                    history.quiz.difficulty === "easy" ? "bg-green-500" :
-                    history.quiz.difficulty === "medium" ? "bg-orange" :
-                    "bg-red-wine"
-                  }`}>
-                    {history.quiz.difficulty === "easy" ? "Dễ" :
-                     history.quiz.difficulty === "medium" ? "Trung bình" :
-                     "Khó"}
+                  <p
+                    className={`py-1 px-4 text-sm text-white font-semibold rounded-full ${
+                      history.quiz.difficulty === "easy"
+                        ? "bg-green-500"
+                        : history.quiz.difficulty === "medium"
+                        ? "bg-orange"
+                        : "bg-red-wine"
+                    }`}
+                  >
+                    {history.quiz.difficulty === "easy"
+                      ? "Dễ"
+                      : history.quiz.difficulty === "medium"
+                      ? "Trung bình"
+                      : "Khó"}
                   </p>
                 </div>
 
@@ -125,15 +152,21 @@ export default function HostedQuizzes() {
               <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <HugeiconsIcon icon={HelpSquareIcon} size={20} color="#FF5733" />
-                    <span className="font-medium">{history.stats.totalQuestions} câu hỏi</span>
+                    <HugeiconsIcon
+                      icon={HelpSquareIcon}
+                      size={20}
+                      color="#FF5733"
+                    />
+                    <span className="font-medium">
+                      {history.stats.totalQuestions} câu hỏi
+                    </span>
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-500">Điểm số cao nhất</p>
                     <p className="font-bold text-lg">{history.score}</p>
                   </div>
                 </div>
-                
+
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-1">
                     <span>Tỷ lệ đúng</span>
@@ -146,12 +179,17 @@ export default function HostedQuizzes() {
                     ></div>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-between text-sm text-gray-500 mb-4">
-                  <span>Tham gia: {format(new Date(history.joinedAt), "dd/MM/yyyy")}</span>
-                  <span>{history.stats.correctAnswers}/{history.stats.totalQuestions} câu đúng</span>
+                  <span>
+                    Tham gia: {format(new Date(history.joinedAt), "dd/MM/yyyy")}
+                  </span>
+                  <span>
+                    {history.stats.correctAnswers}/
+                    {history.stats.totalQuestions} câu đúng
+                  </span>
                 </div>
-                
+
                 <div className="flex gap-3">
                   <button
                     className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-gray-300 btn-hover w-1/3"
@@ -159,7 +197,7 @@ export default function HostedQuizzes() {
                   >
                     <span className="font-medium">Chi tiết</span>
                   </button>
-                  
+
                   <NavLink
                     to={`/join-quiz/${history.quiz._id}`}
                     className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-orange btn-hover w-2/3"

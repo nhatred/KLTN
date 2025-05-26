@@ -21,7 +21,7 @@ export default function MyQuiz() {
   return (
     <div className="pt-32 grid grid-cols-5 items-start gap-y-5 gap-x-10">
       <div className=" col-span-1">
-        <h1 className="text-3xl mb-5">Quiz của tôi</h1>
+        <h1 className="text-2xl mb-5">Quiz của tôi</h1>
 
         <div className="relative bg-background  col-span-1 self-start box-shadow p-5">
           <div className="flex flex-col justify-between">

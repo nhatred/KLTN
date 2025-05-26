@@ -130,7 +130,10 @@ async function joinRoom(socket, data) {
     console.log("No existing participant found, creating new one...");
 
     // Nếu chưa tham gia, tạo bộ câu hỏi mới
-    if (!quiz.questionBankQueries || quiz.questionBankQueries.length === 0) {
+    if (
+      quiz.isExam &&
+      (!quiz.questionBankQueries || quiz.questionBankQueries.length === 0)
+    ) {
       console.log("Quiz has no question bank queries");
       throw new Error("Quiz không có tiêu chí ngân hàng câu hỏi");
     }
@@ -154,6 +157,7 @@ async function joinRoom(socket, data) {
       }
 
       const matched = await Question.find(filter);
+      console.log("Matched questions:", matched);
       console.log(
         `Found ${matched.length} matching questions for bank ${questionBankId}`
       );

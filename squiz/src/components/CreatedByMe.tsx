@@ -3,7 +3,7 @@ import { Quiz } from "../types/Quiz";
 import { NavLink, useOutletContext } from "react-router";
 import { useUser } from "@clerk/clerk-react";
 import QuizzCard from "./QuizzCard";
-import Loading from "./Loading";
+import SpinnerLoading from "../components/SpinnerLoading";
 
 export default function CreatedByMe() {
   const { user } = useUser();
@@ -70,15 +70,33 @@ export default function CreatedByMe() {
         </button>
       </div>
       {loading ? (
-        <Loading />
+        <div className="h-80 flex justify-center items-end">
+          <SpinnerLoading />
+        </div>
       ) : (
         <div className=" grid grid-cols-3 gap-5">
-            {filteredQuizzes.map((quiz: Quiz) => (
-            <NavLink to={"/edit-quiz/" + quiz._id} key={quiz._id}>
-                <QuizzCard key={quiz._id} quiz={quiz} handleCardClick={() => {}}/>
-            </NavLink>
-            
-          ))}
+          {filteredQuizzes.length > 0 ? (
+            filteredQuizzes.map((quiz: Quiz) => (
+              <NavLink to={"/edit-quiz/" + quiz._id} key={quiz._id}>
+                <QuizzCard
+                  key={quiz._id}
+                  quiz={quiz}
+                  handleCardClick={() => {}}
+                />
+              </NavLink>
+            ))
+          ) : (
+            <div className="col-span-full text-center text-gray-400">
+              <img
+                src="/assets/activity2_empty.png"
+                alt="empty-quiz"
+                className="w-60 mx-auto"
+              />
+              <p className="mt-2 text-xl font-semibold">
+                Không có bài quiz nào được tạo bởi bạn
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

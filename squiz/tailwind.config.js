@@ -18,6 +18,27 @@ export default {
         1: "1px",
         3: "3px",
       },
+      animation: {
+        "spin-reverse": "spin-reverse 1s linear infinite",
+        "bounce-dots": "bounce-dots 1.4s infinite",
+      },
+      keyframes: {
+        "spin-reverse": {
+          "0%": { transform: "rotate(360deg)" },
+          "100%": { transform: "rotate(0deg)" },
+        },
+        "bounce-dots": {
+          "0%, 20%": {
+            opacity: "0",
+          },
+          "50%": {
+            opacity: "1",
+          },
+          "100%": {
+            opacity: "0",
+          },
+        },
+      },
     },
   },
   plugins: [],
