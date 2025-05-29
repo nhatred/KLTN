@@ -15,12 +15,11 @@ import {
   _calculateQuestionStats,
   getUserQuizRoomHistory,
 } from "../controllers/QuizRoomController.js";
-import { protectCreator } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
 // Tạo phòng thi từ một quiz
-router.post("/", verifyToken, protectCreator, createRoom);
+router.post("/", verifyToken, createRoom);
 // Bắt đầu phòng thi thủ côngs
 router.post("/:id/start", verifyToken, startRoom);
 // Lấy thông tin phòng bằng mã phòng (public)

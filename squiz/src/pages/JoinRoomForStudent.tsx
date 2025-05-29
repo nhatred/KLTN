@@ -946,21 +946,101 @@ export default function JoinRoomForStudent() {
       }
     });
 
+    // Add room status update listener
+    socket.on("roomStatusChanged", async (data) => {
+      console.log("Received roomStatusChanged event:", data);
+
+      if (data.roomId === room._id) {
+        try {
+          const token = await getToken();
+          const response = await fetch(
+            `http://localhost:5000/api/quizRoom/code/${code}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (response.ok) {
+            const updatedData = await response.json();
+            if (updatedData.success) {
+              console.log("Room status updated:", updatedData.data);
+              setRoom(updatedData.data);
+
+              // Update UI based on new status
+              if (updatedData.data.status === "active") {
+                setShowQuestions(true);
+              } else if (updatedData.data.status === "completed") {
+                setShowQuestions(false);
+                if (!submitted) {
+                  handleConfirm();
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error updating room status:", error);
+        }
+      }
+    });
+
+    // Add periodic room status check
+    const statusCheckInterval = setInterval(async () => {
+      try {
+        const token = await getToken();
+        const response = await fetch(
+          `http://localhost:5000/api/quizRoom/code/${code}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.ok) {
+          const updatedData = await response.json();
+          if (updatedData.success && updatedData.data.status !== room.status) {
+            console.log("Room status updated from polling:", updatedData.data);
+            setRoom(updatedData.data);
+
+            // Update UI based on new status
+            if (updatedData.data.status === "active") {
+              setShowQuestions(true);
+            } else if (updatedData.data.status === "completed") {
+              setShowQuestions(false);
+              if (!submitted) {
+                handleConfirm();
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error in periodic status check:", error);
+      }
+    }, 5000); // Check every 5 seconds
+
     // Join the room's socket channel
     socket.emit("joinUserRoomManager", room._id);
 
     return () => {
       socket.off("participantJoined");
       socket.off("participantLeft");
+      socket.off("roomStatusChanged");
+      clearInterval(statusCheckInterval);
     };
-  }, [socket, room, code, getToken, fetchAllUsers]);
+  }, [socket, room, code, getToken, fetchAllUsers, submitted, handleConfirm]);
 
   // Update room status effect to handle questions
   useEffect(() => {
     if (room?.status === "active") {
       setShowQuestions(true);
+    } else if (room?.status === "completed" && !submitted) {
+      handleConfirm();
     }
-  }, [room?.status]);
+  }, [room?.status, submitted, handleConfirm]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -1671,104 +1751,86 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  if (!showQuestions || room.status === "waiting") {
+  if (!showQuestions || room.status === "scheduled") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full">
         <main className="flex flex-col justify-center items-center">
           <style>{styles}</style>
           <div className="flex justify-end w-full py-2 px-8">
-            <div className="flex bg-orange text-darkblue btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg cursor-pointer">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex bg-orange text-darkblue btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg cursor-pointer"
+            >
               <p>Thoát</p>
-            </div>
+            </button>
           </div>
-          <div className="bg-black/50 backdrop-blur-sm p-6 rounded-lg w-2/5">
+
+          {/* Room Info Card */}
+          <div className="bg-black/50 backdrop-blur-sm p-6 rounded-lg w-2/5 mb-8">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xl font-semibold">
-                {room?.quiz?.name || "Phòng kiểm tra"}
-              </p>
-
-              <p className="text-darkblue font-bold btn-hover cursor-pointer flex items-center gap-2 text-sm bg-orange  p-2 rounded-lg">
-                <HugeiconsIcon icon={Share08Icon} size={16} />
-                <span>Chia sẻ</span>
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-5 mt-5">
-              <div className="flex w-full flex-col gap-2">
-                <p className="text-md font-semibold">
-                  1. Sử dụng bất kỳ thiết bị nào để mở
+              <div>
+                <h2 className="text-2xl font-bold text-orange mb-2">
+                  {room?.quiz?.name || "Phòng kiểm tra"}
+                </h2>
+                <p className="text-gray-400">
+                  Giáo viên: {room?.host?.name || "Không xác định"}
                 </p>
-                <div className="flex items-center justify-between bg-rgba py-2 pl-4 pr-2 rounded-lg gap-2">
-                  <p className="text-2xl font-semibold">joinmyquiz.com</p>
-                  <div
-                    onClick={() => handleCopy("url")}
-                    className="flex items-center gap-2 bg-orange cursor-pointer btn-hover p-5 rounded-lg"
-                  >
-                    <HugeiconsIcon icon={Copy01Icon} />
-                    <div
-                      className={`copy-feedback ${
-                        copied.code ? "visible" : ""
-                      }`}
-                    >
-                      Đã sao chép!
-                    </div>
-                  </div>
-                </div>
               </div>
-              <div className="flex w-full flex-col gap-2">
-                <p className="text-md font-semibold">2. Nhập mã để tham gia</p>
-                <div className="flex items-center justify-between bg-rgba py-2 pl-4 pr-2 rounded-lg gap-2">
-                  <p className="text-5xl tracking-widest font-semibold">
-                    {room?.roomCode}
-                  </p>
-                  <div
-                    onClick={() => handleCopy("code")}
-                    className="flex items-center gap-2 bg-orange cursor-pointer btn-hover p-5 rounded-lg"
-                  >
-                    <HugeiconsIcon icon={Copy01Icon} />
-                    <div
-                      className={`copy-feedback ${
-                        copied.code ? "visible" : ""
-                      }`}
-                    >
-                      Đã sao chép!
-                    </div>
-                  </div>
+
+              <button
+                onClick={() => handleCopy("code")}
+                className="text-darkblue font-bold btn-hover cursor-pointer flex items-center gap-2 text-sm bg-orange p-3 rounded-lg relative"
+              >
+                <HugeiconsIcon icon={Share08Icon} size={16} />
+                <span>Mã: {room?.roomCode}</span>
+                <div
+                  className={`copy-feedback ${copied.code ? "visible" : ""}`}
+                >
+                  Đã sao chép!
                 </div>
-              </div>
+              </button>
             </div>
           </div>
-          <div className="w-full my-16">
-            <div className="flex relative items-center justify-center border-b-1 border-gray-800">
-              <div className="flex absolute left-5 items-center justify-center rounded-lg gap-2">
-                <div className="flex text-background border-2 border-gray-600 items-center gap-2 bg-black/50 backdrop-blur-sm cursor-pointer btn-hover p-2 px-5 rounded-lg">
-                  <HugeiconsIcon icon={UserGroup03Icon} />
-                  <p className="text-lg font-semibold">
-                    {room?.participants?.length || 0}
-                  </p>
-                </div>
+
+          {/* Waiting Status */}
+          <div className="flex flex-col items-center justify-center mb-12">
+            <div className="relative w-32 h-32 mb-4">
+              <div className="absolute inset-0 rounded-full bg-orange/20 animate-ping"></div>
+              <div className="relative flex items-center justify-center w-full h-full rounded-full bg-orange">
+                <HugeiconsIcon
+                  icon={ClockIcon}
+                  size={48}
+                  className="text-darkblue"
+                />
               </div>
-              <div className="flex absolute items-center justify-center rounded-lg gap-2">
-                <div
-                  className={`button-30 text-darkblue rounded-lg bg-orange px-10 py-5 
-                    animate-pulse-scale
-                  `}
-                >
-                  <p className="text-xl font-semibold ">
-                    <span className="text-xl font-medium">{timeRemaining}</span>
-                  </p>
+            </div>
+            <h3 className="text-2xl font-bold text-orange mb-2">
+              Đang chờ bắt đầu
+            </h3>
+            <p className="text-xl text-gray-300">{timeRemaining}</p>
+          </div>
+
+          {/* Participants Section */}
+          <div className="w-full px-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center rounded-lg gap-2">
+                  <div className="flex text-background border-2 border-gray-600 items-center gap-2 bg-black/50 backdrop-blur-sm p-2 px-5 rounded-lg">
+                    <HugeiconsIcon icon={UserGroup03Icon} />
+                    <p className="text-lg font-semibold">
+                      {room?.participants?.length || 0} thí sinh
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className=" items-center justify-center mt-20 grid grid-cols-5 gap-5 mx-8">
+            <div className="grid grid-cols-5 gap-5">
               {room?.participants?.map((participant: any) => {
-                // Get user ID from participant
                 const participantUserId =
                   typeof participant.user === "string"
                     ? participant.user
                     : participant.user?._id;
-
-                // Get full user info from allUsers
                 const userInfo = getUserInfo(participantUserId);
 
                 return (
@@ -1776,7 +1838,7 @@ export default function JoinRoomForStudent() {
                     key={participant._id}
                     className="flex flex-col relative h-full items-center justify-center gap-3 bg-[#384052]/50 backdrop-blur-sm p-5 rounded-lg group transition-all duration-300 hover:bg-[#384052]/70"
                   >
-                    <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center border-2 border-orange/50">
+                    <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center border-2 border-orange/50 transition-transform duration-300 transform group-hover:scale-110">
                       {userInfo.imageUrl ? (
                         <img
                           className="w-full h-full object-cover"
@@ -1792,7 +1854,7 @@ export default function JoinRoomForStudent() {
                       )}
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-semibold text-orange">
+                      <p className="text-lg font-semibold text-orange group-hover:text-white transition-colors duration-300">
                         {userInfo.name || "Anonymous"}
                       </p>
                       <p className="text-sm text-gray-400">Thí sinh</p>

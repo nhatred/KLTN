@@ -4,7 +4,6 @@ export default function SpinnerLoading() {
       <style>{styles}</style>
       <div className="flex flex-col items-center">
         <div className="spinloader"></div>
-        <div className="text-lg mt-2 text-gray-400">Đang tải dữ liệu...</div>
       </div>
     </div>
   );

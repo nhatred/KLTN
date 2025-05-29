@@ -6,7 +6,6 @@ import {
   getSubmissionsByParticipant,
 } from "../controllers/submissionController.js";
 import { verifyToken } from "../middlewares/auth.js";
-import requireAuth from "../middlewares/requireAuth.js";
 
 const router = express.Router();
 

@@ -30,6 +30,7 @@ const quizRoomSchema = new mongoose.Schema(
         message: "Thời lượng phải là số nguyên (phút)",
       },
     },
+    perQuestionTime: { type: Number, min: 1, default: null },
     endTime: { type: Date },
     status: {
       type: String,
@@ -38,7 +39,7 @@ const quizRoomSchema = new mongoose.Schema(
     },
     autoStart: { type: Boolean, default: false },
     lastActivationCheck: { type: Date, default: null },
-    startNow: { type: Boolean, default: false },
+    // startNow: { type: Boolean, default: false },
   },
   {
     timestamps: true,
@@ -59,23 +60,34 @@ quizRoomSchema.virtual("timeRemaining").get(function () {
   return Math.max(0, this.endTime - new Date());
 });
 
-quizRoomSchema.pre("save", function (next) {
-  if (
-    this.isNew ||
-    (this.isModified("startTime") && !this.isModified("status")) ||
-    (this.isModified("durationMinutes") && !this.isModified("status"))
-  ) {
-    if (this.startNow) {
-      this.status = "active";
-      this.isActive = true;
-      const now = new Date();
-      this.startTime = now;
-      this.endTime = new Date(now.getTime() + this.durationMinutes * 60000);
-    } else if (this.startTime && this.durationMinutes) {
-      this.status = "scheduled";
-      this.isActive = false;
+// quizRoomSchema.pre("save", function (next) {
+//   if (
+//     this.isNew ||
+//     (this.isModified("startTime") && !this.isModified("status")) ||
+//     (this.isModified("durationMinutes") && !this.isModified("status"))
+//   ) {
+//     if (this.startNow) {
+//       this.status = "active";
+//       this.isActive = true;
+//       const now = new Date();
+//       this.startTime = now;
+//       this.endTime = new Date(now.getTime() + this.durationMinutes * 60000);
+//     } else if (this.startTime  this.durationMinutes) {
+//       this.status = "scheduled";
+//       this.isActive = false;
+//       this.endTime = new Date(
+//         new Date(this.startTime).getTime() + this.durationMinutes * 60000
+//       );
+//     }
+//   }
+//   next();
+// });
+// Đã thay đổi như dưới
+quizRoomSchema.pre('save', function(next) {
+  if ((this.isModified('startTime') || this.isModified('durationMinutes'))) {
+    if (this.startTime && this.durationMinutes) {
       this.endTime = new Date(
-        new Date(this.startTime).getTime() + this.durationMinutes * 60000
+        this.startTime.getTime() + this.durationMinutes * 60000
       );
     }
   }

@@ -10,7 +10,7 @@ const participantSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Quiz",
     },
-    questionOrder: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
+    // questionOrder: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
     user: {
       type: String, // Keep as String for Clerk user IDs
       // required: true,
@@ -22,7 +22,7 @@ const participantSchema = new mongoose.Schema(
 
     submissions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Submission" }],
     //câu hỏi hiện tại mà người tham gia đang làm
-    currentQuestionIndex: { type: Number, default: 0 },
+    // currentQuestionIndex: { type: Number, default: 0 },
     //ds câu chưa hoàn thành
     remainingQuestions: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Question" },
@@ -46,7 +46,7 @@ const participantSchema = new mongoose.Schema(
     lastActive: { type: Date, default: Date.now },
     // Lưu thông tin thiết bị
     deviceInfo: { type: Object },
-    check: { type: Boolean, default: false },
+    
   },
   {
     timestamps: true,

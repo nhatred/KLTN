@@ -1,13 +1,91 @@
 import ExamSet from "../models/ExamSet.js";
 import Question from "../models/Question.js";
-import Quiz from "../models/Quiz.js";
+import mongoose from "mongoose";
 
-// Lấy tất cả bộ đề
-export const getAllExamSets = async (req, res) => {
+// Tạo bộ đề (ok)
+export const createExamSet = async (req, res) => {
   try {
-    const examSets = await ExamSet.find()
-      .populate("questions")
-      .sort({ createdAt: -1 });
+    console.log("Received data:", JSON.stringify(req.body, null, 2));
+
+    const { name, subject, grade, description } = req.body;
+
+    // Kiểm tra bắt buộc
+    if (!name || !subject || !grade) {
+      return res
+        .status(400)
+        .json({ message: "Tên đề thi, môn học và khối lớp là bắt buộc" });
+    }
+
+    // Tạo ExamSet mới với danh sách câu hỏi rỗng
+    const newExamSet = new ExamSet({
+      name,
+      subject,
+      grade,
+      description: description || "",
+      questions: [], // để rỗng
+      createdBy: req.auth?.userId || "system",
+    });
+
+    const savedExamSet = await newExamSet.save();
+
+    res.status(201).json({
+      message: "Tạo bộ đề thành công",
+      examSet: savedExamSet,
+    });
+  } catch (error) {
+    console.error("Error in createExamSet:", error);
+    res.status(500).json({
+      message: "Lỗi khi tạo đề thi",
+      error: error.message,
+    });
+  }
+};
+
+// Xóa bộ đề (ok)
+export const deleteExamSet = async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid ID format'
+        });
+      }
+
+      const examSet = await ExamSet.findById(id);
+
+      if (!examSet || examSet.createdBy.toString() !== req.userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied or question bank not found'
+        });
+      }
+
+       // Xóa các câu hỏi liên quan
+      await Question.deleteMany({ _id: { $in: examSet.questions } });
+
+      // Xóa đề thi
+      await ExamSet.findByIdAndDelete(req.params.id);
+
+      return res.json({
+        success: true,
+        message: 'Question bank deleted successfully'
+      });
+
+    } catch (error) {
+      console.error('Error deleting question bank:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+// Lấy tất cả bộ đề user (ok)
+export const getAllExamSetsByUser = async (req, res) => {
+  try {
+    const examSets = await ExamSet.find({ createdBy: req.userId }).populate('questions').sort({ createdAt: -1 });
     res.status(200).json(examSets);
   } catch (error) {
     console.error("Error in getAllExamSets:", error);
@@ -15,11 +93,20 @@ export const getAllExamSets = async (req, res) => {
   }
 };
 
-// Lấy một bộ đề theo ID
+// Lấy một bộ đề theo ID (ok)
 export const getExamSetById = async (req, res) => {
   try {
-    const examSet = await ExamSet.findById(req.params.id).populate("questions");
-    if (!examSet) {
+    const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid ID format'
+        });
+      }
+
+    const examSet = await ExamSet.findById(id).populate("questions");
+    if (!examSet || examSet.createdBy.toString() !== req.userId) {
       return res.status(404).json({ message: "Không tìm thấy bộ đề" });
     }
     res.status(200).json(examSet);
@@ -29,106 +116,9 @@ export const getExamSetById = async (req, res) => {
   }
 };
 
-// Tạo bộ đề mới
-export const createExamSet = async (req, res) => {
-  try {
-    console.log("Received data:", JSON.stringify(req.body, null, 2));
 
-    // Validate required fields
-    if (!req.body.name || !req.body.subject || !req.body.grade) {
-      return res
-        .status(400)
-        .json({ message: "Tên đề thi, môn học và khối lớp là bắt buộc" });
-    }
 
-    if (!req.body.questions || !Array.isArray(req.body.questions)) {
-      return res
-        .status(400)
-        .json({ message: "Danh sách câu hỏi không hợp lệ" });
-    }
-
-    // Validate each question
-    for (const question of req.body.questions) {
-      if (!question.questionText) {
-        return res
-          .status(400)
-          .json({ message: "Nội dung câu hỏi là bắt buộc" });
-      }
-      if (!question.options || question.options.length !== 4) {
-        return res
-          .status(400)
-          .json({ message: "Mỗi câu hỏi phải có 4 lựa chọn" });
-      }
-      if (!question.answers || question.answers.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Mỗi câu hỏi phải có ít nhất một đáp án đúng" });
-      }
-      if (
-        !question.difficulty ||
-        !["easy", "medium", "hard"].includes(question.difficulty)
-      ) {
-        return res.status(400).json({ message: "Mức độ khó không hợp lệ" });
-      }
-    }
-
-    // Lưu các câu hỏi vào Question collection
-    console.log("Creating questions...");
-    const savedQuestions = await Promise.all(
-      req.body.questions.map(async (question) => {
-        console.log("Creating question:", question);
-        const newQuestion = new Question({
-          questionText: question.questionText,
-          questionType: "multipleChoices",
-          options: question.options,
-          answers: question.answers,
-          difficulty: question.difficulty,
-          scorePerQuestion: 1, // Mặc định mỗi câu 1 điểm
-        });
-        const savedQuestion = await newQuestion.save();
-        console.log("Created question:", savedQuestion);
-        return savedQuestion;
-      })
-    );
-    console.log("All questions created:", savedQuestions);
-
-    // Tạo ExamSet mới với tham chiếu đến các câu hỏi
-    console.log("Creating ExamSet...");
-    const newExamSet = new ExamSet({
-      name: req.body.name,
-      subject: req.body.subject,
-      grade: req.body.grade,
-      description: req.body.description || "",
-      questions: savedQuestions.map((q) => q._id),
-      createdBy: req.auth?.userId || "system",
-    });
-
-    const savedExamSet = await newExamSet.save();
-    console.log("Created ExamSet:", savedExamSet);
-
-    // Cập nhật examId cho các câu hỏi
-    await Question.updateMany(
-      { _id: { $in: savedQuestions.map((q) => q._id) } },
-      { $set: { examId: savedExamSet._id } }
-    );
-
-    // Trả về ExamSet với thông tin đầy đủ của các câu hỏi
-    const populatedExamSet = await ExamSet.findById(savedExamSet._id).populate(
-      "questions"
-    );
-    console.log("Returning populated ExamSet:", populatedExamSet);
-    res.status(201).json(populatedExamSet);
-  } catch (error) {
-    console.error("Error in createExamSet:", error);
-    res.status(500).json({
-      message: "Lỗi khi tạo đề thi",
-      error: error.message,
-      stack: error.stack,
-    });
-  }
-};
-
-// Cập nhật bộ đề
+// Cập nhật bộ đề (Chưa làm)
 export const updateExamSet = async (req, res) => {
   try {
     const updatedExamSet = await ExamSet.findByIdAndUpdate(
@@ -146,26 +136,45 @@ export const updateExamSet = async (req, res) => {
   }
 };
 
-// Xóa bộ đề
-export const deleteExamSet = async (req, res) => {
-  try {
-    const examSet = await ExamSet.findById(req.params.id);
-    if (!examSet) {
-      return res.status(404).json({ message: "Không tìm thấy bộ đề" });
-    }
+//  static async update(req, res) {
+//     try {
+//       const { id } = req.params;
+//       const { name } = req.body;
 
-    // Xóa các câu hỏi liên quan
-    await Question.deleteMany({ _id: { $in: examSet.questions } });
+//       if (!mongoose.Types.ObjectId.isValid(id)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Invalid ID format'
+//         });
+//       }
 
-    // Xóa đề thi
-    await ExamSet.findByIdAndDelete(req.params.id);
+//       const bank = await QuestionBank.findById(id);
 
-    res.status(200).json({ message: "Đã xóa bộ đề thành công" });
-  } catch (error) {
-    console.error("Error in deleteExamSet:", error);
-    res.status(500).json({ message: error.message });
-  }
-};
+//       if (!bank || bank.owner.toString() !== req.userId) {
+//         return res.status(403).json({
+//           success: false,
+//           message: 'Access denied or question bank not found'
+//         });
+//       }
+
+//       if (name) bank.name = name;
+
+//       const updated = await bank.save();
+
+//       return res.json({
+//         success: true,
+//         message: 'Updated successfully',
+//         data: updated
+//       });
+
+//     } catch (error) {
+//       console.error('Error updating question bank:', error);
+//       return res.status(500).json({
+//         success: false,
+//         message: 'Server error'
+//       });
+//     }
+//   }
 
 // Tạo đề thi tự động
 export const generateExam = async (req, res) => {

@@ -13,16 +13,25 @@ import {
   Book02Icon,
   Mortarboard01Icon,
   Cancel01Icon,
+  Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import React, { useState, useMemo, useEffect } from "react";
-import axios from "axios";
+import { useAuth } from "@clerk/clerk-react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
-interface Section {
+import axios, { AxiosError } from "axios";
+import SpinnerLoading from "../components/SpinnerLoading";
+import * as XLSX from "xlsx";
+
+interface Question {
+  _id: string;
+  questionText: string;
+  options: string[];
+  answers: {
+    text: string;
+    isCorrect: boolean;
+  }[];
   difficulty: "easy" | "medium" | "hard";
-  numberOfQuestions: number;
-  totalPoints: number;
-  pointPerQuestion: number;
 }
 
 interface Exam {
@@ -31,25 +40,9 @@ interface Exam {
   description: string;
   subject: string;
   grade: string;
-  sections: Section[];
-  questions: {
-    question: {
-      _id: string;
-      questionText: string;
-      difficulty: string;
-    };
-    section: string;
-    order: number;
-  }[];
+  questions: Question[];
   createdAt: string;
   createdBy: string;
-}
-
-interface Question {
-  questionText: string;
-  options: string[];
-  answers: number[];
-  difficulty: "easy" | "medium" | "hard";
 }
 
 interface CreateExamForm {
@@ -60,19 +53,20 @@ interface CreateExamForm {
   questions: Question[];
 }
 
+const API_BASE_URL = "http://localhost:5000/api";
+
 export default function ExamBank() {
+  const { getToken } = useAuth();
   const [exams, setExams] = useState<Exam[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedGrade, setSelectedGrade] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest");
-  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
-    const savedViewMode = localStorage.getItem("examBankViewMode");
-    return savedViewMode === "grid" || savedViewMode === "list"
-      ? savedViewMode
-      : "grid";
-  });
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentExamId, setCurrentExamId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   const [formData, setFormData] = useState<CreateExamForm>({
     name: "",
@@ -82,34 +76,39 @@ export default function ExamBank() {
     questions: [],
   });
 
-  const [currentQuestion, setCurrentQuestion] = useState<Question>({
+  const [currentQuestion, setCurrentQuestion] = useState({
     questionText: "",
     options: ["", "", "", ""],
-    answers: [],
-    difficulty: "easy",
+    answers: [] as number[],
+    difficulty: "easy" as "easy" | "medium" | "hard",
   });
 
   const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
   const [availableGrades, setAvailableGrades] = useState<string[]>([]);
+  const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"basic" | "questions" | "import">(
+    "basic"
+  );
+  const [isAnimating, setIsAnimating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const subjects = [
-    "Toán học",
-    "Vật lý",
-    "Hóa học",
-    "Sinh học",
-    "Tiếng Anh",
-    "Văn học",
-  ];
-  const grades = ["10", "11", "12"];
+  // Thêm chỉnh sửa câu hỏi
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+
+  // Thêm imported questions
+  const [importedQuestions, setImportedQuestions] = useState<Question[]>([]);
 
   // Fetch exams from API
   useEffect(() => {
     const fetchExams = async () => {
       try {
-        const response = await axios.get("/api/examSets");
+        setIsLoading(true);
+        const response = await axios.get("/api/examSets", {
+          params: { populate: "questions" },
+        });
         setExams(response.data);
 
-        // Lấy danh sách môn học và khối lớp từ đề thi
         const subjects = [
           ...new Set(response.data.map((exam: Exam) => exam.subject)),
         ] as string[];
@@ -121,43 +120,56 @@ export default function ExamBank() {
         setAvailableGrades(grades);
       } catch (error) {
         console.error("Error fetching exams:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchExams();
   }, []);
 
-  // Save view mode to localStorage when it changes
+  // Save view mode to localStorage
+  useEffect(() => {
+    const savedViewMode = localStorage.getItem("examBankViewMode");
+    if (savedViewMode === "grid" || savedViewMode === "list") {
+      setViewMode(savedViewMode);
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("examBankViewMode", viewMode);
   }, [viewMode]);
 
-  const handleViewModeChange = (mode: "grid" | "list") => {
-    setViewMode(mode);
-  };
-
-  // Add effect to handle body scroll lock
   useEffect(() => {
-    if (isModalOpen) {
+    if (isModalOpen || isViewModalOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
     }
-
-    // Cleanup function
     return () => {
       document.body.style.overflow = "unset";
     };
-  }, [isModalOpen]);
+  }, [isModalOpen, isViewModalOpen]);
 
   const handleCreateExam = () => {
     setIsModalOpen(true);
+    setActiveTab("basic");
+    setCurrentExamId(null);
+    setFormData({
+      name: "",
+      subject: "",
+      grade: "",
+      description: "",
+      questions: [],
+    });
   };
-  const [isAnimating, setIsAnimating] = useState(false);
+
   const handleCloseModal = () => {
     setIsAnimating(true);
     setTimeout(() => {
       setIsModalOpen(false);
       setIsAnimating(false);
+      setCurrentExamId(null);
+      setIsEditing(false);
       setFormData({
         name: "",
         subject: "",
@@ -171,10 +183,45 @@ export default function ExamBank() {
         answers: [],
         difficulty: "easy",
       });
-    }, 200);
+    }, 300);
   };
 
-  const handleAddQuestion = () => {
+  const handleCreateBasicExam = async () => {
+    if (!formData.name || !formData.subject || !formData.grade) {
+      alert("Vui lòng điền đầy đủ thông tin đề thi");
+      return;
+    }
+
+    try {
+      const response = await axios.post("/api/examSets", {
+        name: formData.name,
+        description: formData.description,
+        subject: formData.subject,
+        grade: formData.grade,
+      });
+
+      setCurrentExamId(response.data.examSet._id);
+      setActiveTab("questions");
+
+      // Fetch lại danh sách đề thi sau khi tạo thành công
+      const fetchResponse = await axios.get("/api/examSets", {
+        params: { populate: "questions" },
+      });
+      setExams(fetchResponse.data);
+
+      alert("Tạo đề thi thành công! Bây giờ bạn có thể thêm câu hỏi.");
+    } catch (error) {
+      console.error("Error creating exam:", error);
+      alert("Có lỗi xảy ra khi tạo đề thi");
+    }
+  };
+
+  const handleAddQuestion = async () => {
+    if (!currentExamId) {
+      alert("Chưa có đề thi để thêm câu hỏi");
+      return;
+    }
+
     if (!currentQuestion.questionText) {
       alert("Vui lòng nhập nội dung câu hỏi");
       return;
@@ -190,60 +237,49 @@ export default function ExamBank() {
       return;
     }
 
-    setFormData((prev) => ({
-      ...prev,
-      questions: [...prev.questions, currentQuestion],
-    }));
-
-    setCurrentQuestion({
-      questionText: "",
-      options: ["", "", "", ""],
-      answers: [],
-      difficulty: "easy",
-    });
-  };
-  const [activeTab, setActiveTab] = useState("basic");
-  const handleRemoveQuestion = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleSubmitExam = async () => {
-    if (!formData.name || !formData.subject || !formData.grade) {
-      alert("Vui lòng điền đầy đủ thông tin đề thi");
-      return;
-    }
-
-    if (formData.questions.length === 0) {
-      alert("Vui lòng thêm ít nhất một câu hỏi");
-      return;
-    }
-
     try {
-      const formattedQuestions = formData.questions.map((q) => ({
-        questionText: q.questionText,
-        options: q.options,
-        answers: q.options.map((option, index) => ({
+      const response = await axios.post("/api/question", {
+        examSetId: currentExamId,
+        questionText: currentQuestion.questionText,
+        questionType: "multipleChoices",
+        difficulty: currentQuestion.difficulty,
+        options: currentQuestion.options,
+        answers: currentQuestion.options.map((option, index) => ({
           text: option,
-          isCorrect: q.answers.includes(index),
+          isCorrect: currentQuestion.answers.includes(index),
         })),
-        difficulty: q.difficulty,
-      }));
-
-      const response = await axios.post("/api/examSets", {
-        name: formData.name,
-        description: formData.description,
-        subject: formData.subject,
-        grade: formData.grade,
-        questions: formattedQuestions,
       });
-      setExams((prev) => [response.data, ...prev]);
-      handleCloseModal();
-    } catch (error) {
-      console.error("Error creating exam:", error);
-      alert("Có lỗi xảy ra khi tạo đề thi");
+
+      // Cập nhật danh sách đề thi
+
+      const updatedExams = exams.map((exam) => {
+        if (exam._id === currentExamId) {
+          return {
+            ...exam,
+            questions: [...exam.questions, response.data.question],
+          };
+        }
+        return exam;
+      });
+
+      console.log(updatedExams);
+      setExams(updatedExams);
+
+      // Reset form câu hỏi
+      setCurrentQuestion({
+        questionText: "",
+        options: ["", "", "", ""],
+        answers: [],
+        difficulty: "easy",
+      });
+
+      alert("Thêm câu hỏi thành công!");
+    } catch (err: unknown) {
+      const error = err as AxiosError<{ message: string }>;
+      const serverMessage =
+        error.response?.data?.message || "Có lỗi xảy ra khi thêm câu hỏi";
+      console.error("Error adding question:", error);
+      alert(serverMessage);
     }
   };
 
@@ -259,7 +295,109 @@ export default function ExamBank() {
     }
   };
 
-  // Filtered and sorted exams
+  // Thêm edit
+  const handleEditQuestion = (question: Question) => {
+    setEditingQuestion(question);
+    setCurrentQuestion({
+      questionText: question.questionText,
+      options: question.options,
+      answers: question.answers
+        .map((ans, index) => (ans.isCorrect ? index : -1))
+        .filter((i) => i >= 0),
+      difficulty: question.difficulty,
+    });
+
+    // Scroll đến form chỉnh sửa
+    document
+      .getElementById("question-form")
+      ?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  //Thêm update
+  const handleUpdateQuestion = async () => {
+    if (!editingQuestion || !currentExamId) return;
+
+    try {
+      setIsLoading(true);
+      await axios.put(`/api/question/${editingQuestion._id}`, {
+        questionText: currentQuestion.questionText,
+        options: currentQuestion.options,
+        answers: currentQuestion.options.map((option, index) => ({
+          text: option,
+          isCorrect: currentQuestion.answers.includes(index),
+        })),
+        difficulty: currentQuestion.difficulty,
+      });
+
+      // Cập nhật UI
+      const updatedExams = exams.map((exam) => {
+        if (exam._id === currentExamId) {
+          return {
+            ...exam,
+            questions: exam.questions.map((q) =>
+              q._id === editingQuestion._id
+                ? {
+                    ...q,
+                    questionText: currentQuestion.questionText,
+                    options: currentQuestion.options,
+                    answers: currentQuestion.options.map((opt, i) => ({
+                      text: opt,
+                      isCorrect: currentQuestion.answers.includes(i),
+                    })),
+                    difficulty: currentQuestion.difficulty,
+                  }
+                : q
+            ),
+          };
+        }
+        return exam;
+      });
+
+      setExams(updatedExams);
+      setEditingQuestion(null);
+      setCurrentQuestion({
+        questionText: "",
+        options: ["", "", "", ""],
+        answers: [],
+        difficulty: "easy",
+      });
+
+      alert("Cập nhật câu hỏi thành công!");
+    } catch (error) {
+      console.error("Error updating question:", error);
+      alert("Có lỗi xảy ra khi cập nhật câu hỏi");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteQuestion = async (examId: string, questionId: string) => {
+    console.log("questionId", questionId);
+
+    if (window.confirm("Bạn có chắc chắn muốn xóa câu hỏi này?")) {
+      try {
+        await axios.delete(`/api/question/${questionId}`);
+
+        // Cập nhật UI
+        const updatedExams = exams.map((exam) => {
+          if (exam._id === examId) {
+            return {
+              ...exam,
+              questions: exam.questions.filter((q) => q._id !== questionId),
+            };
+          }
+          return exam;
+        });
+        setExams(updatedExams);
+
+        alert("Xóa câu hỏi thành công!");
+      } catch (error) {
+        console.error("Error deleting question:", error);
+        alert("Có lỗi xảy ra khi xóa câu hỏi");
+      }
+    }
+  };
+
   const filteredExams = useMemo(() => {
     let filtered = exams.filter((exam) => {
       const matchesSearch =
@@ -272,7 +410,6 @@ export default function ExamBank() {
       return matchesSearch && matchesSubject && matchesGrade;
     });
 
-    // Sort exams
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "newest":
@@ -298,6 +435,210 @@ export default function ExamBank() {
     return date.toLocaleDateString("vi-VN");
   };
 
+  const handleViewExam = async (exam: Exam) => {
+    try {
+      const response = await axios.get(`/api/examSets/${exam._id}`, {
+        params: { populate: "questions" },
+      });
+      setSelectedExam(response.data);
+      setIsViewModalOpen(true);
+    } catch (error) {
+      console.error("Error fetching exam details:", error);
+      alert("Có lỗi xảy ra khi tải thông tin đề thi");
+    }
+  };
+
+  const handleCloseViewModal = () => {
+    setIsViewModalOpen(false);
+    setSelectedExam(null);
+  };
+
+  const handleEditExam = (exam: any) => {
+    setIsEditing(true);
+    setCurrentExamId(exam._id);
+    setFormData({
+      name: exam.name,
+      subject: exam.subject,
+      grade: exam.grade,
+      description: exam.description || "",
+      questions: [],
+    });
+    setIsModalOpen(true);
+    setActiveTab("basic");
+  };
+
+  const handleUpdateExam = async () => {
+    try {
+      const response = await axios.put(
+        `/api/examSets/${currentExamId}`,
+        formData
+      );
+
+      // Refresh exam list
+      const fetchResponse = await axios.get("/api/examSets", {
+        params: { populate: "questions" },
+      });
+      setExams(fetchResponse.data);
+
+      handleCloseModal();
+      alert("Cập nhật đề thi thành công!");
+    } catch (error) {
+      console.error("Error updating exam:", error);
+      alert("Có lỗi xảy ra khi cập nhật đề thi");
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    // Tạo workbook mới
+    const wb = XLSX.utils.book_new();
+
+    // Tạo worksheet với dữ liệu mẫu
+    const wsData = [
+      [
+        "Câu hỏi",
+        "Lựa chọn A",
+        "Lựa chọn B",
+        "Lựa chọn C",
+        "Lựa chọn D",
+        "Đáp án đúng",
+        "Mức độ",
+      ],
+      ["1 + 1 = ?", "1", "2", "3", "4", "B", "easy"],
+      ["2 x 3 = ?", "4", "5", "6", "7", "C", "easy"],
+      ["Căn bậc hai của 16 là?", "2", "3", "4", "5", "C", "medium"],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Thêm worksheet vào workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+
+    // Tải xuống file
+    XLSX.writeFile(wb, "template_cau_hoi.xlsx");
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      const questions: Question[] = jsonData.map((row: any) => {
+        const options = [
+          row["Lựa chọn A"],
+          row["Lựa chọn B"],
+          row["Lựa chọn C"],
+          row["Lựa chọn D"],
+        ];
+        const correctAnswer = row["Đáp án đúng"].toUpperCase();
+        const correctIndex = correctAnswer.charCodeAt(0) - 65; // Convert A,B,C,D to 0,1,2,3
+
+        return {
+          _id: Math.random().toString(36).substr(2, 9), // Generate temporary ID
+          questionText: row["Câu hỏi"],
+          options: options,
+          answers: options.map((option, index) => ({
+            text: option,
+            isCorrect: index === correctIndex,
+          })),
+          difficulty: row["Mức độ"] || "easy",
+        };
+      });
+
+      setImportedQuestions(questions);
+      alert(`Đã đọc thành công ${questions.length} câu hỏi từ file Excel!`);
+    } catch (error) {
+      console.error("Error importing Excel:", error);
+      alert(
+        "Có lỗi xảy ra khi import file Excel. Vui lòng kiểm tra định dạng file."
+      );
+    }
+
+    // Reset input để có thể chọn lại file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveImportedQuestions = async () => {
+    if (!currentExamId || importedQuestions.length === 0) return;
+
+    try {
+      setIsLoading(true);
+
+      // Lấy token từ localStorage
+      const token = await getToken();
+      if (!token) {
+        throw new Error("Bạn cần đăng nhập để thực hiện chức năng này");
+      }
+
+      // Thêm token vào header
+      const config = {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      };
+
+      // Lưu từng câu hỏi vào database
+      for (const question of importedQuestions) {
+        const response = await axios.post(
+          `${API_BASE_URL}/question`,
+          {
+            examSetId: currentExamId,
+            questionText: question.questionText,
+            questionType: "multipleChoices",
+            difficulty: question.difficulty,
+            options: question.options,
+            answers: question.answers,
+          },
+          config
+        );
+
+        if (!response.data) {
+          throw new Error("Failed to save question");
+        }
+      }
+
+      // Refresh exam list với token
+      const response = await axios.get(`${API_BASE_URL}/examSets`, {
+        ...config,
+        params: { populate: "questions" },
+      });
+
+      setExams(response.data);
+
+      // Cập nhật formData
+      const updatedExam = response.data.find(
+        (e: Exam) => e._id === currentExamId
+      );
+      if (updatedExam) {
+        setFormData((prev) => ({
+          ...prev,
+          questions: updatedExam.questions,
+        }));
+      }
+
+      // Reset imported questions
+      setImportedQuestions([]);
+      alert("Đã lưu thành công các câu hỏi vào đề thi!");
+    } catch (error: any) {
+      console.error("Error saving questions:", error);
+      if (error.response?.status === 401) {
+        alert("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại!");
+      } else {
+        alert(
+          error.message || "Có lỗi xảy ra khi lưu câu hỏi. Vui lòng thử lại."
+        );
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto px-4 py-8 pt-32">
@@ -310,7 +651,6 @@ export default function ExamBank() {
         {/* Search and Filter Section */}
         <div className="bg-white rounded-lg box-shadow p-5 mb-5">
           <div className="flex flex-wrap gap-4 mb-4">
-            {/* Search */}
             <div className="flex-1 min-w-64">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 flex items-center pl-3">
@@ -326,7 +666,6 @@ export default function ExamBank() {
               </div>
             </div>
 
-            {/* Filters */}
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
@@ -364,30 +703,25 @@ export default function ExamBank() {
             </select>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex justify-between items-center">
             <div className="flex gap-2">
               <button
-                onClick={() => handleViewModeChange("grid")}
+                onClick={() => setViewMode("grid")}
                 className={`p-2 rounded-lg ${
                   viewMode === "grid"
                     ? "bg-red-100 text-orange"
                     : "text-gray-400 hover:text-gray-600"
                 }`}
-                aria-label="Grid view"
-                type="button"
               >
                 <HugeiconsIcon icon={GridViewIcon} />
               </button>
               <button
-                onClick={() => handleViewModeChange("list")}
+                onClick={() => setViewMode("list")}
                 className={`p-2 rounded-lg ${
                   viewMode === "list"
                     ? "bg-red-100 text-orange"
                     : "text-gray-400 hover:text-gray-600"
                 }`}
-                aria-label="List view"
-                type="button"
               >
                 <HugeiconsIcon icon={LeftToRightListDashIcon} />
               </button>
@@ -452,7 +786,11 @@ export default function ExamBank() {
         </div>
 
         {/* Exam List */}
-        {filteredExams.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white rounded-lg box-shadow p-12">
+            <SpinnerLoading />
+          </div>
+        ) : filteredExams.length === 0 ? (
           <div className="bg-white rounded-lg box-shadow p-12 text-center">
             <HugeiconsIcon
               icon={Book02Icon}
@@ -483,10 +821,16 @@ export default function ExamBank() {
                     {exam.name}
                   </h3>
                   <div className="flex gap-1">
-                    <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
+                    <button
+                      onClick={() => handleViewExam(exam)}
+                      className="p-1 text-gray-400 hover:text-orange transition-colors"
+                    >
                       <HugeiconsIcon icon={ViewIcon} />
                     </button>
-                    <button className="p-1 text-gray-400 hover:text-green-600 transition-colors">
+                    <button
+                      onClick={() => handleEditExam(exam)}
+                      className="p-1 text-gray-400 hover:text-green-600 transition-colors"
+                    >
                       <HugeiconsIcon icon={FileEditIcon} />
                     </button>
                     <button
@@ -530,6 +874,14 @@ export default function ExamBank() {
                     <span className="font-medium">
                       {formatDate(exam.createdAt)}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <HugeiconsIcon
+                      icon={LeftToRightListDashIcon}
+                      className="h-4 w-4 text-gray-400"
+                    />
+                    <span className="text-gray-600">Số câu: </span>
+                    <span className="font-medium">{exam.questions.length}</span>
                   </div>
                 </div>
               </div>
@@ -580,13 +932,7 @@ export default function ExamBank() {
                       {exam.grade}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {exam.sections && exam.sections.length > 0
-                        ? exam.sections.reduce(
-                            (total, section) =>
-                              total + (section?.numberOfQuestions || 0),
-                            0
-                          )
-                        : exam.questions?.length || 0}
+                      {exam.questions.length}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(exam.createdAt)}
@@ -594,21 +940,20 @@ export default function ExamBank() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
-                          className="text-blue-600 hover:text-blue-900"
-                          aria-label="View exam"
+                          onClick={() => handleViewExam(exam)}
+                          className="text-blue-600 hover:text-orange"
                         >
                           <HugeiconsIcon icon={ViewIcon} />
                         </button>
                         <button
+                          onClick={() => handleEditExam(exam)}
                           className="text-green-600 hover:text-green-900"
-                          aria-label="Edit exam"
                         >
                           <HugeiconsIcon icon={FileEditIcon} />
                         </button>
                         <button
                           onClick={() => handleDeleteExam(exam._id)}
                           className="text-red-600 hover:text-red-900"
-                          aria-label="Delete exam"
                         >
                           <HugeiconsIcon icon={Delete01Icon} />
                         </button>
@@ -618,6 +963,191 @@ export default function ExamBank() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* View Exam Modal */}
+        {isViewModalOpen && selectedExam && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden">
+              <div className="bg-gradient-to-r from-orange to-red-wine p-6 text-white">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                      <HugeiconsIcon icon={ViewIcon} className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold">Chi tiết bộ đề thi</h2>
+                      <p className="text-blue-100 text-sm">
+                        Xem thông tin chi tiết và danh sách câu hỏi
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCloseViewModal}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(95vh-200px)] p-6">
+                <div className="space-y-6">
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <HugeiconsIcon
+                        icon={Book02Icon}
+                        className="w-5 h-5 text-orange"
+                      />
+                      Thông tin cơ bản
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">Tên bộ đề</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedExam.name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Môn học</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedExam.subject}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Khối lớp</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedExam.grade}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Ngày tạo</p>
+                        <p className="font-medium text-gray-900">
+                          {formatDate(selectedExam.createdAt)}
+                        </p>
+                      </div>
+                      {selectedExam.description && (
+                        <div className="md:col-span-2">
+                          <p className="text-sm text-gray-600">Mô tả</p>
+                          <p className="font-medium text-gray-900">
+                            {selectedExam.description}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={LeftToRightListDashIcon}
+                          className="w-5 h-5 text-orange"
+                        />
+                        Danh sách câu hỏi
+                      </h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                        <HugeiconsIcon
+                          icon={GridViewIcon}
+                          className="w-4 h-4"
+                        />
+                        {selectedExam.questions.length} câu hỏi
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {selectedExam.questions.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                          <HugeiconsIcon
+                            icon={FileEditIcon}
+                            className="w-12 h-12 text-gray-400 mx-auto mb-4"
+                          />
+                          <p className="text-gray-600 font-medium">
+                            Chưa có câu hỏi nào
+                          </p>
+                        </div>
+                      ) : (
+                        selectedExam.questions.map((question, index) => (
+                          <div
+                            key={question._id}
+                            className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="flex justify-between items-start gap-4">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="flex items-center justify-center w-8 h-8 bg-orange text-background rounded-full text-sm font-bold">
+                                    {index + 1}
+                                  </span>
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                                      question.difficulty === "easy"
+                                        ? "border-green-200 bg-green-50 text-green-600"
+                                        : question.difficulty === "medium"
+                                        ? "border-yellow-200 bg-yellow-50 text-yellow-600"
+                                        : "border-red-200 bg-red-50 text-red-600"
+                                    }`}
+                                  >
+                                    Mức độ:{" "}
+                                    {question.difficulty === "easy"
+                                      ? "Dễ"
+                                      : question.difficulty === "medium"
+                                      ? "Trung bình"
+                                      : "Khó"}
+                                  </span>
+                                </div>
+                                <p className="font-medium text-gray-900 text-lg leading-relaxed">
+                                  {question.questionText}
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {question.options.map((option, optIndex) => {
+                                    const isCorrect = question.answers.some(
+                                      (ans) =>
+                                        ans.text === option && ans.isCorrect
+                                    );
+                                    return (
+                                      <div
+                                        key={optIndex}
+                                        className={`p-3 rounded-lg border-2 text-sm ${
+                                          isCorrect
+                                            ? "bg-green-50 border-green-200 text-green-500 font-medium"
+                                            : "bg-gray-50 border-gray-200 text-gray-700"
+                                        }`}
+                                      >
+                                        <span className="font-medium mr-2">
+                                          {String.fromCharCode(65 + optIndex)}.
+                                        </span>
+                                        {option}
+                                        {isCorrect && (
+                                          <span className="ml-2 text-green-600">
+                                            ✓
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleCloseViewModal}
+                    className="px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-200 font-medium"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -633,7 +1163,6 @@ export default function ExamBank() {
                 isAnimating ? "scale-95 opacity-0" : "scale-100 opacity-100"
               }`}
             >
-              {/* Header */}
               <div className="bg-gradient-to-r from-orange to-red-wine p-6 text-white">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
@@ -641,9 +1170,15 @@ export default function ExamBank() {
                       <HugeiconsIcon icon={FileEditIcon} className="w-6 h-6" />
                     </div>
                     <div>
-                      <h2 className="text-2xl font-bold">Tạo bộ đề thi mới</h2>
+                      <h2 className="text-2xl font-bold">
+                        {isEditing
+                          ? "Chỉnh sửa bộ đề thi"
+                          : "Tạo bộ đề thi mới"}
+                      </h2>
                       <p className="text-blue-100 text-sm">
-                        Thiết lập thông tin và câu hỏi cho đề thi
+                        {isEditing
+                          ? "Cập nhật thông tin và câu hỏi cho đề thi"
+                          : "Thiết lập thông tin và câu hỏi cho đề thi"}
                       </p>
                     </div>
                   </div>
@@ -656,7 +1191,6 @@ export default function ExamBank() {
                 </div>
               </div>
 
-              {/* Tab Navigation */}
               <div className="border-b border-gray-200 bg-gray-50">
                 <div className="flex">
                   <button
@@ -674,11 +1208,12 @@ export default function ExamBank() {
                   </button>
                   <button
                     onClick={() => setActiveTab("questions")}
+                    disabled={!currentExamId}
                     className={`flex-1 px-6 py-4 font-medium text-sm transition-all duration-200 ${
                       activeTab === "questions"
                         ? "bg-white text-orange border-b-2 border-orange"
                         : "text-gray-600 hover:text-gray-800 hover:bg-gray-100"
-                    }`}
+                    } ${!currentExamId ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <div className="flex items-center justify-center gap-2">
                       <HugeiconsIcon
@@ -686,21 +1221,28 @@ export default function ExamBank() {
                         className="w-4 h-4"
                       />
                       Danh sách câu hỏi
-                      {formData.questions.length > 0 && (
-                        <span className="ml-1 px-2 py-0.5 bg-orange text-background text-xs rounded-full">
-                          {formData.questions.length}
-                        </span>
-                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("import")}
+                    disabled={!currentExamId}
+                    className={`flex-1 px-6 py-4 font-medium text-sm transition-all duration-200 ${
+                      activeTab === "import"
+                        ? "bg-white text-orange border-b-2 border-orange"
+                        : "text-gray-600 hover:text-gray-800 hover:bg-gray-100"
+                    } ${!currentExamId ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <HugeiconsIcon icon={Upload01Icon} className="w-4 h-4" />
+                      Import Excel
                     </div>
                   </button>
                 </div>
               </div>
 
-              {/* Content */}
               <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
                 {activeTab === "basic" && (
                   <div className="p-6 space-y-6">
-                    {/* Basic Information Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <div className="lg:col-span-2">
                         <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
@@ -715,8 +1257,9 @@ export default function ExamBank() {
                               name: e.target.value,
                             }))
                           }
-                          className="w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900 "
+                          className="w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900"
                           placeholder="Nhập tên đề thi (ví dụ: Kiểm tra giữa kỳ I - Toán 9)"
+                          disabled={!isEditing && !!currentExamId}
                         />
                       </div>
 
@@ -741,6 +1284,7 @@ export default function ExamBank() {
                             }
                             className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 cursor-pointer rounded-xl focus:border-orange transition-all duration-200"
                             placeholder="Chọn hoặc nhập môn học"
+                            disabled={!isEditing && !!currentExamId}
                           />
                           <datalist id="subjects">
                             {availableSubjects.map((subject) => (
@@ -771,6 +1315,7 @@ export default function ExamBank() {
                             }
                             className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 cursor-pointer rounded-xl focus:border-orange transition-all duration-200"
                             placeholder="Chọn hoặc nhập khối lớp"
+                            disabled={!isEditing && !!currentExamId}
                           />
                           <datalist id="grades">
                             {availableGrades.map((grade) => (
@@ -782,7 +1327,7 @@ export default function ExamBank() {
 
                       <div className="lg:col-span-2">
                         <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
-                          Mô tả <span className="text-red-500">*</span>
+                          Mô tả
                         </label>
                         <textarea
                           value={formData.description}
@@ -792,14 +1337,14 @@ export default function ExamBank() {
                               description: e.target.value,
                             }))
                           }
-                          className="w-full p-4 border-2 border-gray-200 rounded-xl  transition-all duration-200 resize-none"
+                          className="w-full p-4 border-2 border-gray-200 rounded-xl transition-all duration-200 resize-none"
                           rows={4}
                           placeholder="Mô tả chi tiết về nội dung, mục đích và yêu cầu của đề thi..."
+                          disabled={!isEditing && !!currentExamId}
                         />
                       </div>
                     </div>
 
-                    {/* Preview Card */}
                     {(formData.name || formData.subject || formData.grade) && (
                       <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
                         <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -842,7 +1387,6 @@ export default function ExamBank() {
 
                 {activeTab === "questions" && (
                   <div className="p-6 space-y-6">
-                    {/* Questions List */}
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -857,102 +1401,144 @@ export default function ExamBank() {
                             icon={GridViewIcon}
                             className="w-4 h-4"
                           />
-                          {formData.questions.length} câu hỏi
+                          {exams.find((e) => e._id === currentExamId)?.questions
+                            .length || 0}{" "}
+                          câu hỏi
                         </div>
                       </div>
 
-                      {formData.questions.length === 0 ? (
-                        <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                          <HugeiconsIcon
-                            icon={FileEditIcon}
-                            className="w-12 h-12 text-gray-400 mx-auto mb-4"
-                          />
-                          <p className="text-gray-600 font-medium">
-                            Chưa có câu hỏi nào
-                          </p>
-                          <p className="text-gray-500 text-sm">
-                            Thêm câu hỏi đầu tiên bên dưới
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {formData.questions.map((question, index) => (
-                            <div
-                              key={index}
-                              className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
-                            >
-                              <div className="flex justify-between items-start gap-4">
-                                <div className="flex-1 space-y-3">
-                                  <div className="flex items-center gap-3">
-                                    <span className="flex items-center justify-center w-8 h-8 bg-orange text-background rounded-full text-sm font-bold">
-                                      {index + 1}
-                                    </span>
-                                    <span
-                                      className={`px-3 py-1 rounded-full text-xs font-medium border`}
-                                    >
-                                      Mức độ:{" "}
-                                      {question.difficulty === "easy"
-                                        ? "Dễ"
-                                        : question.difficulty === "medium"
-                                        ? "Trung bình"
-                                        : "Khó"}
-                                    </span>
+                      <div className="space-y-4">
+                        {exams.find((e) => e._id === currentExamId)?.questions
+                          .length === 0 ? (
+                          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                            <HugeiconsIcon
+                              icon={FileEditIcon}
+                              className="w-12 h-12 text-gray-400 mx-auto mb-4"
+                            />
+                            <p className="text-gray-600 font-medium">
+                              Chưa có câu hỏi nào
+                            </p>
+                            <p className="text-gray-500 text-sm">
+                              Thêm câu hỏi đầu tiên bên dưới
+                            </p>
+                          </div>
+                        ) : (
+                          exams
+                            .find((e) => e._id === currentExamId)
+                            ?.questions.map((question, index) => (
+                              <div
+                                key={question._id}
+                                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
+                              >
+                                <div className="flex justify-between items-start gap-4">
+                                  <div className="flex-1 space-y-3">
+                                    <div className="flex items-center gap-3">
+                                      <span className="flex items-center justify-center w-8 h-8 bg-orange text-background rounded-full text-sm font-bold">
+                                        {index + 1}
+                                      </span>
+                                      <span
+                                        className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                                          question.difficulty === "easy"
+                                            ? "border-green-200 bg-green-50 text-green-600"
+                                            : question.difficulty === "medium"
+                                            ? "border-yellow-200 bg-yellow-50 text-yellow-600"
+                                            : "border-red-200 bg-red-50 text-red-600"
+                                        }`}
+                                      >
+                                        Mức độ:{" "}
+                                        {question.difficulty === "easy"
+                                          ? "Dễ"
+                                          : question.difficulty === "medium"
+                                          ? "Trung bình"
+                                          : "Khó"}
+                                      </span>
+                                    </div>
+                                    <p className="font-medium text-gray-900 text-lg leading-relaxed">
+                                      {question.questionText}
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                      {question.options.map(
+                                        (option, optIndex) => {
+                                          const isCorrect =
+                                            question.answers.some(
+                                              (ans) =>
+                                                ans.text === option &&
+                                                ans.isCorrect
+                                            );
+                                          return (
+                                            <div
+                                              key={optIndex}
+                                              className={`p-3 rounded-lg border-2 text-sm ${
+                                                isCorrect
+                                                  ? "bg-green-50 border-green-200 text-green-500 font-medium"
+                                                  : "bg-gray-50 border-gray-200 text-gray-700"
+                                              }`}
+                                            >
+                                              <span className="font-medium mr-2">
+                                                {String.fromCharCode(
+                                                  65 + optIndex
+                                                )}
+                                                .
+                                              </span>
+                                              {option}
+                                              {isCorrect && (
+                                                <span className="ml-2 text-green-600">
+                                                  ✓
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        }
+                                      )}
+                                    </div>
                                   </div>
-                                  <p className="font-medium text-gray-900 text-lg leading-relaxed">
-                                    {question.questionText}
-                                  </p>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    {question.options.map(
-                                      (option, optIndex) => (
-                                        <div
-                                          key={optIndex}
-                                          className={`p-3 rounded-lg border-2 text-sm ${
-                                            question.answers.includes(optIndex)
-                                              ? "bg-green-50 border-green-200 text-green-500 font-medium"
-                                              : "bg-gray-50 border-gray-200 text-gray-700"
-                                          }`}
-                                        >
-                                          <span className="font-medium mr-2">
-                                            {String.fromCharCode(65 + optIndex)}
-                                            .
-                                          </span>
-                                          {option}
-                                          {question.answers.includes(
-                                            optIndex
-                                          ) && (
-                                            <span className="ml-2 text-green-600">
-                                              ✓
-                                            </span>
-                                          )}
-                                        </div>
-                                      )
-                                    )}
+                                  <div className="flex">
+                                    {/* Thêm button edit */}
+                                    <button
+                                      onClick={() =>
+                                        handleEditQuestion(question)
+                                      }
+                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    >
+                                      <HugeiconsIcon
+                                        icon={FileEditIcon}
+                                        className="w-5 h-5"
+                                      />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (currentExamId) {
+                                          handleDeleteQuestion(
+                                            currentExamId,
+                                            question._id
+                                          );
+                                        }
+                                      }}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                      <HugeiconsIcon
+                                        icon={Delete01Icon}
+                                        className="w-5 h-5"
+                                      />
+                                    </button>
                                   </div>
                                 </div>
-                                <button
-                                  onClick={() => handleRemoveQuestion(index)}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                  <HugeiconsIcon
-                                    icon={Delete01Icon}
-                                    className="w-5 h-5"
-                                  />
-                                </button>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))
+                        )}
+                      </div>
                     </div>
 
-                    {/* Add New Question */}
-                    <div className="bg-gradient-to-br from-gray-50 to-blue-50 border-2 border-dashed border-orange rounded-xl p-6">
+                    {/* Chỉnh lại thêm id để chọc form chỉnh sửa  */}
+                    <div
+                      id="question-form"
+                      className="bg-gradient-to-br from-gray-50 to-blue-50 border-2 border-dashed border-orange rounded-xl p-6"
+                    >
                       <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                        <HugeiconsIcon
-                          icon={Add01Icon}
-                          className="w-5 h-5 text-orange"
-                        />
-                        Thêm câu hỏi mới
+                        <HugeiconsIcon icon={Add01Icon} />
+                        {editingQuestion
+                          ? "Chỉnh sửa câu hỏi"
+                          : "Thêm câu hỏi mới"}
                       </h3>
 
                       <div className="space-y-6">
@@ -1053,35 +1639,225 @@ export default function ExamBank() {
                             ))}
                           </div>
                         </div>
+                      </div>
+                      <div className="flex gap-3">
+                        {editingQuestion && (
+                          <button
+                            onClick={() => {
+                              setEditingQuestion(null);
+                              setCurrentQuestion({
+                                questionText: "",
+                                options: ["", "", "", ""],
+                                answers: [],
+                                difficulty: "easy",
+                              });
+                            }}
+                            className="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-all"
+                          >
+                            Hủy
+                          </button>
+                        )}
 
                         <button
-                          onClick={handleAddQuestion}
-                          disabled={
-                            !currentQuestion.questionText.trim() ||
-                            currentQuestion.answers.length === 0
+                          onClick={
+                            editingQuestion
+                              ? handleUpdateQuestion
+                              : handleAddQuestion
                           }
-                          className="w-full px-6 py-4 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center justify-center gap-2"
+                          className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 transition-all"
                         >
-                          <HugeiconsIcon icon={Add01Icon} className="w-5 h-5" />
-                          Thêm câu hỏi
+                          {editingQuestion
+                            ? "Cập nhật câu hỏi"
+                            : "Thêm câu hỏi"}
                         </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {activeTab === "import" && (
+                  <div className="p-6 space-y-6">
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={Upload01Icon}
+                          className="w-6 h-6 text-orange"
+                        />
+                        Import câu hỏi từ Excel
+                      </h3>
+
+                      <div className="space-y-6">
+                        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
+                          <h4 className="font-semibold text-gray-800 mb-3">
+                            Hướng dẫn
+                          </h4>
+                          <ol className="list-decimal list-inside space-y-2 text-gray-600">
+                            <li>
+                              Tải template Excel mẫu bằng cách nhấn nút "Tải
+                              template" bên dưới
+                            </li>
+                            <li>
+                              Điền thông tin câu hỏi vào file Excel theo mẫu:
+                              <ul className="list-disc list-inside ml-6 mt-2 space-y-1">
+                                <li>Câu hỏi: Nội dung câu hỏi</li>
+                                <li>
+                                  Lựa chọn A, B, C, D: Các phương án trả lời
+                                </li>
+                                <li>Đáp án đúng: Chọn A, B, C hoặc D</li>
+                                <li>
+                                  Mức độ: easy (dễ), medium (trung bình), hard
+                                  (khó)
+                                </li>
+                              </ul>
+                            </li>
+                            <li>
+                              Nhấn nút "Import Excel" để chọn file Excel đã điền
+                            </li>
+                            <li>
+                              Kiểm tra câu hỏi đã import và nhấn "Lưu vào đề
+                              thi"
+                            </li>
+                          </ol>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button
+                            onClick={handleDownloadTemplate}
+                            className="px-6 py-3 bg-white border-2 border-orange text-orange rounded-xl hover:bg-orange/5 transition-all duration-200 font-medium flex items-center gap-2"
+                          >
+                            <HugeiconsIcon
+                              icon={FileEditIcon}
+                              className="w-5 h-5"
+                            />
+                            Tải template
+                          </button>
+                          <label className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 transition-all duration-200 font-medium flex items-center gap-2 cursor-pointer">
+                            <HugeiconsIcon
+                              icon={Upload01Icon}
+                              className="w-5 h-5"
+                            />
+                            Import Excel
+                            <input
+                              type="file"
+                              accept=".xlsx,.xls"
+                              className="hidden"
+                              onChange={handleImportExcel}
+                              ref={fileInputRef}
+                            />
+                          </label>
+                        </div>
+
+                        {importedQuestions.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                              <h4 className="font-semibold text-gray-800">
+                                Danh sách câu hỏi đã import (
+                                {importedQuestions.length})
+                              </h4>
+                              <button
+                                onClick={handleSaveImportedQuestions}
+                                disabled={isLoading}
+                                className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 transition-all duration-200 font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isLoading ? (
+                                  <>Đang lưu...</>
+                                ) : (
+                                  <>
+                                    <HugeiconsIcon
+                                      icon={FileEditIcon}
+                                      className="w-5 h-5"
+                                    />
+                                    Lưu vào đề thi
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            <div className="space-y-4">
+                              {importedQuestions.map((question, index) => (
+                                <div
+                                  key={question._id}
+                                  className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
+                                >
+                                  <div className="flex justify-between items-start gap-4">
+                                    <div className="flex-1 space-y-3">
+                                      <div className="flex items-center gap-3">
+                                        <span className="flex items-center justify-center w-8 h-8 bg-orange text-background rounded-full text-sm font-bold">
+                                          {index + 1}
+                                        </span>
+                                        <span
+                                          className={`px-3 py-1 rounded-full text-xs font-medium border`}
+                                        >
+                                          Mức độ:{" "}
+                                          {question.difficulty === "easy"
+                                            ? "Dễ"
+                                            : question.difficulty === "medium"
+                                            ? "Trung bình"
+                                            : "Khó"}
+                                        </span>
+                                      </div>
+                                      <p className="font-medium text-gray-900 text-lg leading-relaxed">
+                                        {question.questionText}
+                                      </p>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {question.options.map(
+                                          (option, optIndex) => {
+                                            const isCorrect =
+                                              question.answers.some(
+                                                (ans) =>
+                                                  ans.text === option &&
+                                                  ans.isCorrect
+                                              );
+                                            return (
+                                              <div
+                                                key={optIndex}
+                                                className={`p-3 rounded-lg border-2 text-sm ${
+                                                  isCorrect
+                                                    ? "bg-green-50 border-green-200 text-green-500 font-medium"
+                                                    : "bg-gray-50 border-gray-200 text-gray-700"
+                                                }`}
+                                              >
+                                                <span className="font-medium mr-2">
+                                                  {String.fromCharCode(
+                                                    65 + optIndex
+                                                  )}
+                                                  .
+                                                </span>
+                                                {option}
+                                                {isCorrect && (
+                                                  <span className="ml-2 text-green-600">
+                                                    ✓
+                                                  </span>
+                                                )}
+                                              </div>
+                                            );
+                                          }
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Footer */}
               <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
                 <div className="flex justify-between items-center">
                   <div className="text-sm text-gray-600">
-                    {formData.questions.length > 0 && (
+                    {currentExamId && (
                       <span className="flex items-center gap-2">
                         <HugeiconsIcon
                           icon={LeftToRightListDashIcon}
                           className="w-4 h-4"
                         />
-                        {formData.questions.length} câu hỏi đã thêm
+                        {exams.find((e) => e._id === currentExamId)?.questions
+                          .length || 0}{" "}
+                        câu hỏi đã thêm
                       </span>
                     )}
                   </div>
@@ -1090,21 +1866,27 @@ export default function ExamBank() {
                       onClick={handleCloseModal}
                       className="px-6 py-3 text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-xl transition-all duration-200 font-medium"
                     >
-                      Hủy bỏ
+                      {currentExamId ? "Đóng" : "Hủy bỏ"}
                     </button>
-                    <button
-                      onClick={handleSubmitExam}
-                      disabled={
-                        !formData.name ||
-                        !formData.subject ||
-                        !formData.grade ||
-                        formData.questions.length === 0
-                      }
-                      className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center gap-2"
-                    >
-                      <HugeiconsIcon icon={FileEditIcon} className="w-5 h-5" />
-                      Tạo đề thi
-                    </button>
+                    {activeTab === "basic" && (
+                      <button
+                        onClick={
+                          isEditing ? handleUpdateExam : handleCreateBasicExam
+                        }
+                        disabled={
+                          !formData.name || !formData.subject || !formData.grade
+                        }
+                        className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center gap-2"
+                      >
+                        <HugeiconsIcon
+                          icon={FileEditIcon}
+                          className="w-5 h-5"
+                        />
+                        {isEditing
+                          ? "Cập nhật đề thi"
+                          : "Tạo đề thi và thêm câu hỏi"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

@@ -198,24 +198,13 @@ export default function CreateRoom() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-5">
-            <div
-              onClick={handleCreateRoomLive}
-              className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg"
-            >
-              <HugeiconsIcon icon={LiveStreaming02Icon} />
-              <p>Trực tiếp</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-5">
-            <div
-              onClick={handleCreateRoom}
-              className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg"
-            >
-              <HugeiconsIcon icon={DigitalClockIcon} />
-              <p>Tạo phòng</p>
-            </div>
+        <div className="flex items-center gap-5">
+          <div
+            onClick={handleCreateRoom}
+            className="p-3 flex gap-1 items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg"
+          >
+            <HugeiconsIcon icon={DigitalClockIcon} />
+            <p>Tạo phòng</p>
           </div>
         </div>
       </nav>

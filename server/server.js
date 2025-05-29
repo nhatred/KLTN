@@ -5,7 +5,7 @@ import connectDB from "./configs/mongodb.js";
 import { clerkWebhooks } from "./controllers/webhooks.js";
 import quizRoutes from "./routes/quiz.js";
 import questionRoutes from "./routes/questions.js";
-import examSetRoutes from "./routes/examSetRoutes.js";
+import examSetRoutes from "./routes/examSet.js";
 import connectCloudinary from "./configs/cloudinary.js";
 import QuizRoomRoutes from "./routes/quizRoom.js";
 import participantRoutes from "./routes/participant.js";
@@ -43,6 +43,8 @@ app.use("/api/quizRoom", QuizRoomRoutes);
 app.use("/api/examSets", examSetRoutes);
 app.use("/api/participant", participantRoutes);
 app.use("/api/submission", submissionRoutes);
+// Routes
+
 // Setup Socket.IO
 setupQuizSocket(io);
 startCronJobs(io);

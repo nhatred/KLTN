@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { HugeiconsIcon } from "@hugeicons/react";
+import axios, { AxiosError } from "axios";
 import {
   Cancel01Icon,
   Download03Icon,
   CalculatorIcon,
   Delete01Icon,
+  CursorMagicSelection03Icon,
 } from "@hugeicons/core-free-icons";
 import "./../style/dashboard.css";
+import { useAuth } from "@clerk/clerk-react";
 
 const virtualData = {
   name: "React Hook Form provides an errors object to show you the errors in the form. errors' type will return given validation constraints. The following example showcases a required validation rule.",
@@ -31,16 +34,25 @@ const virtualData = {
   ],
 };
 
+interface MultipleChoicesProps {
+  quizId: string;
+  closeFormQuestion: () => void;
+  getDataForm: (data: any) => void;
+  onQuestionCreated?: (newQuestion: any) => void;
+}
+
 export default function MultipleChoices({
+  quizId,
   closeFormQuestion,
   getDataForm,
-}: any) {
+  onQuestionCreated,
+}: MultipleChoicesProps) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm();
-
+  const { getToken } = useAuth();
   const [questionOptions, setQuestionOptions] = useState({
     questionType: "multipleChoices",
     questionText: "",
@@ -86,11 +98,16 @@ export default function MultipleChoices({
     const { name, value } = e.target;
     setQuestionOptions({
       ...questionOptions,
-      [name]: value,
+      [name]:
+        name === "timePerQuestion" || name === "scorePerQuestion"
+          ? Number(value)
+          : value,
     });
   };
+
   const filledAnswers = answers.filter((a) => a.text.trim() !== "");
   const hasCorrect = answers.some((a) => a.isCorrect);
+
   const saveQuestion = () => {
     if (!hasCorrect || filledAnswers.length < 4) {
       return;
@@ -99,8 +116,8 @@ export default function MultipleChoices({
     const questionData = {
       questionType: questionOptions.questionType,
       questionText: questionOptions.questionText,
-      timePerQuestion: questionOptions.timePerQuestion,
-      scorePerQuestion: questionOptions.scorePerQuestion,
+      timePerQuestion: Number(questionOptions.timePerQuestion),
+      scorePerQuestion: Number(questionOptions.scorePerQuestion),
       difficulty: questionOptions.difficulty,
       answers,
     };
@@ -128,181 +145,289 @@ export default function MultipleChoices({
     closeFormQuestion();
   };
 
+  const handleSubmitQuestion = async () => {
+    try {
+      const token = await getToken();
+
+      if (!questionOptions.questionText.trim()) {
+        alert("Please enter a question");
+        return;
+      }
+
+      if (!hasCorrect || filledAnswers.length < 4) {
+        alert(
+          "Please fill in all answers and select at least one correct answer"
+        );
+        return;
+      }
+
+      const API_BASE_URL = "http://localhost:5000/api";
+
+      const questionData = {
+        quizId: quizId,
+        questionText: questionOptions.questionText,
+        questionType: "multipleChoices",
+        difficulty: questionOptions.difficulty,
+        timePerQuestion: Number(questionOptions.timePerQuestion),
+        scorePerQuestion: Number(questionOptions.scorePerQuestion),
+        options: answers.map((answer) => answer.text.trim()),
+        answers: answers.map((answer) => ({
+          text: answer.text.trim(),
+          isCorrect: answer.isCorrect,
+        })),
+      };
+
+      const response = await axios.post(
+        `${API_BASE_URL}/question`,
+        questionData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        // Format the new question data
+        const newQuestion = {
+          ...response.data.question,
+          questionId: response.data.question._id,
+          _id: response.data.question._id,
+          timePerQuestion: Number(questionOptions.timePerQuestion),
+          scorePerQuestion: Number(questionOptions.scorePerQuestion),
+          options: answers.map((answer) => answer.text.trim()),
+        };
+
+        // Call saveQuestion to update local state
+        saveQuestion();
+
+        // Notify parent component about the new question
+        if (onQuestionCreated) {
+          onQuestionCreated(newQuestion);
+        }
+
+        // Close the form
+        closeForm();
+      } else {
+        throw new Error(response.data.message || "Failed to save question");
+      }
+    } catch (error) {
+      console.error("Error saving question:", error);
+      if (error instanceof AxiosError) {
+        alert(error.response?.data?.message || "Failed to save question");
+      } else {
+        alert("An error occurred while saving the question");
+      }
+    }
+  };
+
   return (
     <div
-      className="bg-background p-10 rounded-lg"
+      className="bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
-      <nav className="h-16 py-2 flex justify-between items-center">
-        <div className="flex items-center w-full justify-between">
-          <div className="flex items-center gap-2">
-            <select
-              name="questionType"
-              id="questionType"
-              value={questionOptions.questionType}
-              onChange={handleQuestionOptions}
-              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg block w-full p-2.5 font-semibold "
-            >
-              <option value="multipleChoices">Nhiều lựa chọn</option>
-              <option value="fillInBlank">Điền vào chỗ trống</option>
-              <option value="paragraph">Đoạn văn</option>
-              <option value="dragAndDrop">Kéo và thả</option>
-              <option value="dropDown">Thả xuống</option>
-            </select>
-
-            <select
-              name="timePerQuestion"
-              id="time"
-              value={questionOptions.timePerQuestion}
-              onChange={handleQuestionOptions}
-              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg block w-full p-2.5 font-semibold"
-            >
-              <option value={15}>15 giây</option>
-              <option value={30}>30 giây</option>
-              <option value={45}>45 giây</option>
-              <option value={60}>1 phút</option>
-              <option value={90}>1.5 phút</option>
-            </select>
-            <select
-              name="scorePerQuestion"
-              id="score"
-              value={questionOptions.scorePerQuestion}
-              onChange={handleQuestionOptions}
-              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg block w-full p-2.5 font-semibold"
-            >
-              <option value={1}>1 điểm</option>
-              <option value={2}>2 điểm</option>
-              <option value={3}>3 điểm</option>
-              <option value={4}>4 điểm</option>
-              <option value={5}>5 điểm</option>
-            </select>
-            <select
-              name="difficulty"
-              id="difficulty"
-              value={questionOptions.difficulty}
-              onChange={handleQuestionOptions}
-              className="bg-white  border outline-none border-gray-300  text-sm rounded-lg block w-full p-2.5 font-semibold"
-            >
-              <option value="easy">Dễ</option>
-              <option value="medium">Trung bình</option>
-              <option value="hard">Khó</option>
-            </select>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-orange to-red-wine p-6 text-white">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+              <HugeiconsIcon
+                icon={CursorMagicSelection03Icon}
+                className="w-6 h-6"
+              />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold">
+                Create Multiple Choice Question
+              </h2>
+              <p className="text-blue-100 text-sm">
+                Configure your question settings and options
+              </p>
+            </div>
           </div>
-          <div
+          <button
             onClick={closeForm}
-            className="w-10 h-10 cursor-pointer flex justify-center items-center rounded-full hover:text-red-wine"
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
           >
-            <HugeiconsIcon icon={Cancel01Icon} />
-          </div>
-        </div>
-      </nav>
-      <div className=" flex items-center">
-        <div>
-          <div className=" p-2 hover:bg-gray-200 cursor-pointer rounded flex items-center gap-2">
-            <HugeiconsIcon icon={CalculatorIcon} />
-            <p className="text-sm">Chèn kí hiệu toán học</p>
-          </div>
+            <HugeiconsIcon icon={Cancel01Icon} className="w-6 h-6" />
+          </button>
         </div>
       </div>
-      <div className=" mt-20 ">
-        <div className="bg-white p-5 rounded-lg box-shadow empower_component">
-          <div className="rounded-lg overflow-hidden">
-            <textarea
-              className={`text-xl w-full text-center outline-none border-0 border-background bg-transparent p-2 flex rounded-md`}
-              {...register("questionText", {
-                required: "Câu hỏi không được để trống",
-              })}
-              value={questionOptions.questionText}
-              onChange={handleQuestionOptions}
-              rows={5}
-              placeholder={
-                errors.questionText
-                  ? "Vui lòng nhập nội dung câu hỏi"
-                  : "Nhập câu hỏi ở đây"
-              }
-              id=""
-            ></textarea>
-          </div>
-          <div className="grain  rounded-2xl"></div>
-          <div className="noise  rounded-2xl"></div>
-          <div className="mt-5 grid grid-flow-col gap-2">
+
+      {/* Question Settings */}
+      <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="grid grid-cols-4 gap-4">
+          <select
+            name="questionType"
+            id="questionType"
+            value={questionOptions.questionType}
+            onChange={handleQuestionOptions}
+            className="bg-white border outline-none text-sm rounded-xl block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
+          >
+            <option value="multipleChoices">Multiple Choice</option>
+            <option value="fillInBlank">Fill in Blank</option>
+            <option value="paragraph">Paragraph</option>
+            <option value="dragAndDrop">Drag & Drop</option>
+            <option value="dropDown">Dropdown</option>
+          </select>
+
+          <select
+            name="timePerQuestion"
+            id="time"
+            value={questionOptions.timePerQuestion}
+            onChange={handleQuestionOptions}
+            className="bg-white border outline-none text-sm rounded-xl block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
+          >
+            <option value={15}>15 seconds</option>
+            <option value={30}>30 seconds</option>
+            <option value={45}>45 seconds</option>
+            <option value={60}>1 minute</option>
+            <option value={90}>1.5 minutes</option>
+          </select>
+
+          <select
+            name="scorePerQuestion"
+            id="score"
+            value={questionOptions.scorePerQuestion}
+            onChange={handleQuestionOptions}
+            className="bg-white border outline-none text-sm rounded-xl block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
+          >
+            <option value={1}>1 point</option>
+            <option value={2}>2 points</option>
+            <option value={3}>3 points</option>
+            <option value={4}>4 points</option>
+            <option value={5}>5 points</option>
+          </select>
+
+          <select
+            name="difficulty"
+            id="difficulty"
+            value={questionOptions.difficulty}
+            onChange={handleQuestionOptions}
+            className="bg-white border outline-none text-sm rounded-xl block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
+          >
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+
+        <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 flex items-center gap-2">
+          <HugeiconsIcon icon={CalculatorIcon} size={20} />
+          <span className="text-sm font-medium">Insert Math Symbol</span>
+        </button>
+
+        {/* Question Content */}
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+          <textarea
+            className={`w-full text-lg outline-none border bg-white rounded-xl p-4 min-h-[120px] transition-colors duration-200 resize-none mb-6 ${
+              errors.questionText
+                ? "border-red-500"
+                : "border-gray-300 focus:border-orange"
+            }`}
+            {...register("questionText", {
+              required: "Question cannot be empty",
+            })}
+            value={questionOptions.questionText}
+            onChange={handleQuestionOptions}
+            placeholder={
+              errors.questionText
+                ? "Please enter your question"
+                : "Enter your question here"
+            }
+          />
+
+          <div className="grid grid-cols-2 gap-4">
             {answers.map((answer, index) => (
-              <div key={index} className="p-2 rounded-lg box-shadow">
-                <div className="flex justify-between">
+              <div
+                key={index}
+                className="bg-white p-4 rounded-xl border border-gray-200 hover:border-orange/50 transition-all duration-200"
+              >
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 rounded-full text-sm font-bold">
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                    <div className="checkbox-wrapper-26">
+                      <input
+                        type="checkbox"
+                        id={`_checkbox-${index}`}
+                        checked={answer.isCorrect}
+                        onChange={() => handleCheck(index)}
+                      />
+                      <label htmlFor={`_checkbox-${index}`}>
+                        <div className="tick_mark"></div>
+                      </label>
+                    </div>
+                  </div>
                   <button
                     onClick={() => handleDelete(index)}
-                    className="cursor-pointer  h-8 w-8 flex justify-center items-center rounded hover:text-red-wine"
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
                     aria-label="Delete answer"
                   >
                     <HugeiconsIcon icon={Delete01Icon} size={20} />
                   </button>
-                  {/* <div className="checkbox-wrapper-18">
-                    <div className="round">
-                      <input
-                        type="checkbox"
-                        id={`checkbox-${index}`}
-                        checked={answer.isCorrect}
-                        onChange={() => handleCheck(index)}
-                      />
-                      <label htmlFor={`checkbox-${index}`}></label>
-                    </div>
-                  </div> */}
-                  <div className="checkbox-wrapper-26">
-                    <input
-                      type="checkbox"
-                      id={`_checkbox-${index}`}
-                      checked={answer.isCorrect}
-                      onChange={() => handleCheck(index)}
-                    />
-                    <label htmlFor={`_checkbox-${index}`}>
-                      <div className="tick_mark"></div>
-                    </label>
-                  </div>
                 </div>
-                <div className="relative">
-                  <div className=" overflow-hidden mt-2 rounded-lg">
-                    <textarea
-                      className="text-xl w-full text-center bg-transparent outline-none p-2 flex"
-                      value={answer.text}
-                      onChange={(e) => handleChange(index, e.target.value)}
-                      rows={8}
-                      placeholder="Nhập câu trả lời ở đây"
-                      aria-label={`Answer option ${index + 1}`}
-                    />
-                  </div>
-                </div>
+
+                <textarea
+                  className="w-full text-base bg-transparent outline-none p-3 border border-gray-200 rounded-lg focus:border-orange transition-colors duration-200 resize-none"
+                  value={answer.text}
+                  onChange={(e) => handleChange(index, e.target.value)}
+                  rows={3}
+                  placeholder={`Enter answer option ${String.fromCharCode(
+                    65 + index
+                  )}`}
+                  aria-label={`Answer option ${index + 1}`}
+                />
               </div>
             ))}
           </div>
-          {/* {filledAnswers.length < 4 && (
-            <div className="text-red-wine ">
-              <p className="text-sm">* Vui lòng nhập đầy đủ đáp án</p>
-            </div>
-          )}
-          {!hasCorrect && (
-            <div className="text-red-wine ">
-              <p className="text-sm">* Chọn câu trả lời đúng</p>
-            </div>
-          )} */}
+
+          <div className="mt-4 space-y-2">
+            {filledAnswers.length < 4 && (
+              <p className="text-sm text-red-500 font-medium flex items-center gap-2">
+                <i className="fa-solid fa-circle-exclamation"></i>
+                Please fill in all answer options
+              </p>
+            )}
+            {!hasCorrect && (
+              <p className="text-sm text-red-500 font-medium flex items-center gap-2">
+                <i className="fa-solid fa-circle-exclamation"></i>
+                Please select the correct answer
+              </p>
+            )}
+          </div>
         </div>
       </div>
-      <div className="flex justify-end">
-        <button
-          onClick={() => createVirtualData()}
-          className="py-2 px-3 flex items-center mb-2 gap-2 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg"
-        >
-          <HugeiconsIcon icon={Download03Icon} />
-          <p>Dữ liệu ảo</p>
-        </button>
-      </div>
-      <div className="flex justify-end">
-        <button
-          onClick={handleSubmit(saveQuestion)}
-          className="py-2 px-3 flex items-center gap-2 cursor-pointer bg-orange btn-hover rounded font-semibold text-lg"
-        >
-          <HugeiconsIcon icon={Download03Icon} />
-          <p>Lưu</p>
-        </button>
+
+      {/* Footer */}
+      <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => createVirtualData()}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 flex items-center gap-2"
+          >
+            <HugeiconsIcon icon={Download03Icon} size={20} />
+            <span className="font-medium">Load Sample Data</span>
+          </button>
+
+          <div className="flex gap-3">
+            <button
+              onClick={closeForm}
+              className="px-6 py-3 text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-xl transition-all duration-200 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmitQuestion}
+              disabled={!hasCorrect || filledAnswers.length < 4}
+              className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center gap-2"
+            >
+              <HugeiconsIcon icon={Download03Icon} size={20} />
+              <span>Save Question</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

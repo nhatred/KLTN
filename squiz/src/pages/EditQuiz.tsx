@@ -23,6 +23,7 @@ import {
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import imageCompression from "browser-image-compression";
+import SelectQuizModal from "../components/SelectQuizModal";
 
 const QUESTION_TYPES = {
   MULTIPLE_CHOICE: "multipleChoices",
@@ -96,7 +97,7 @@ export default function EditQuiz() {
     checkAuthorization();
   }, [id, userId, getToken]);
 
-  const handleClickModal: React.MouseEventHandler<HTMLDivElement> = () => {
+  const handleClickModal = () => {
     setIsModal((preVal) => !preVal);
   };
 
@@ -118,7 +119,9 @@ export default function EditQuiz() {
     name: "",
     topic: "",
     difficulty: "",
-    isPublic: "public",
+    timePerQuestion: 30,
+    scorePerQuestion: 1,
+    isPublic: true,
     questions: [{}],
     imageUrl: null,
   });
@@ -135,14 +138,42 @@ export default function EditQuiz() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  const [isSelectQuizModalOpen, setIsSelectQuizModalOpen] = useState(false);
+  const [selectedQuestionBanks, setSelectedQuestionBanks] = useState<
+    Array<{
+      examSetId: string;
+      name: string;
+      sections: Array<{
+        difficulty: string;
+        numberOfQuestions: number;
+      }>;
+    }>
+  >([]);
+
+  const selectedBankIds = selectedQuestionBanks.map((bank) => bank.examSetId);
+
+  const [activeNewQuestion, setActiveNewQuestion] = useState(true);
+  const [isExam, setIsExam] = useState(false);
+
+  useEffect(() => {
+    setIsExam(selectedQuestionBanks.length > 0);
+  }, [selectedQuestionBanks]);
+
   useEffect(() => {
     setQuestions((prevQuestions) =>
       prevQuestions.map((question) => ({
         ...question,
-        timePerQuestion: quizOptions.timePerQuestion,
-        scorePerQuestion: quizOptions.scorePerQuestion,
+        timePerQuestion: Number(quizOptions.timePerQuestion),
+        scorePerQuestion: Number(quizOptions.scorePerQuestion),
       }))
     );
+
+    // Also update the quiz data
+    setQuizData((prev) => ({
+      ...prev,
+      timePerQuestion: Number(quizOptions.timePerQuestion),
+      scorePerQuestion: Number(quizOptions.scorePerQuestion),
+    }));
   }, [quizOptions]);
 
   // Fetch quiz and questions
@@ -151,8 +182,15 @@ export default function EditQuiz() {
 
     setIsLoading(true);
     try {
+      const token = await getToken();
+      if (!token) throw new Error("No authentication token found");
+
       // Fetch quiz data
-      const quizResponse = await fetch(`${API_BASE_URL}/quiz/${id}`);
+      const quizResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       if (!quizResponse.ok) throw new Error("Quiz not found");
 
       const response = await quizResponse.json();
@@ -169,73 +207,112 @@ export default function EditQuiz() {
         name: quizData.name || "",
         topic: quizData.topic || "",
         difficulty: quizData.difficulty || "",
-        isPublic: quizData.isPublic || "public",
+        isPublic:
+          typeof quizData.isPublic === "boolean" ? quizData.isPublic : true,
         questions: quizData.questions || [],
         imageUrl: quizData.imageUrl || null,
+        timePerQuestion: Number(quizData.timePerQuestion || 30),
+        scorePerQuestion: Number(quizData.scorePerQuestion || 1),
       };
+
+      // Update quiz options with default values from quiz
+      setQuizOptions({
+        timePerQuestion: Number(quizData.timePerQuestion || 30),
+        scorePerQuestion: Number(quizData.scorePerQuestion || 1),
+      });
+
       console.log("Updated quiz data:", updatedQuizData);
       setQuizData(updatedQuizData);
+
+      // Fetch questions
+      const questionsResponse = await fetch(
+        `${API_BASE_URL}/question/quiz/${id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!questionsResponse.ok) {
+        throw new Error("Failed to fetch questions");
+      }
+
+      const questionsData = await questionsResponse.json();
+      if (questionsData.success) {
+        const formattedQuestions = questionsData.data.map((q: any) => {
+          // Ensure each question has its own time and score values
+          const timePerQuestion =
+            q.timePerQuestion !== undefined
+              ? Number(q.timePerQuestion)
+              : Number(updatedQuizData.timePerQuestion);
+          const scorePerQuestion =
+            q.scorePerQuestion !== undefined
+              ? Number(q.scorePerQuestion)
+              : Number(updatedQuizData.scorePerQuestion);
+
+          console.log(`Question ${q._id} original values:`, {
+            timePerQuestion: q.timePerQuestion,
+            scorePerQuestion: q.scorePerQuestion,
+          });
+
+          return {
+            questionId: q._id,
+            _id: q._id,
+            quizId: q.quizId,
+            questionType: q.questionType,
+            questionText: q.questionText,
+            timePerQuestion,
+            scorePerQuestion,
+            difficulty: q.difficulty,
+            answers: q.answers,
+            options: q.answers.map((answer: any) => answer.text),
+          };
+        });
+
+        console.log(
+          "Formatted questions with preserved values:",
+          formattedQuestions
+        );
+        setQuestions(formattedQuestions);
+      }
 
       // Set form values
       setValue("name", quizData.name || "");
       setValue("topic", quizData.topic || "");
       setValue("difficulty", quizData.difficulty || "");
-      setValue("isPublic", quizData.isPublic || "public");
+      setValue(
+        "isPublic",
+        typeof quizData.isPublic === "boolean" ? quizData.isPublic : true
+      );
 
-      // Set quiz options
-      setQuizOptions({
-        timePerQuestion: quizData.timePerQuestion || 30,
-        scorePerQuestion: quizData.scorePerQuestion || 1,
-      });
+      // If quiz is using question banks, update the state
+      if (quizData.isExam && quizData.questionBankQueries?.length > 0) {
+        setIsExam(true);
+        setActiveNewQuestion(false);
 
-      try {
-        // Fetch questions separately
-        const questionsResponse = await fetch(
-          `${API_BASE_URL}/question/quiz/${id}`
-        );
+        // Group queries by examSetId
+        const questionBanks = new Map();
+        quizData.questionBankQueries.forEach((query: any) => {
+          if (!questionBanks.has(query.examSetId)) {
+            questionBanks.set(query.examSetId, {
+              examSetId: query.examSetId,
+              name: query.examName || "Question Bank",
+              sections: [],
+            });
+          }
+          questionBanks.get(query.examSetId).sections.push({
+            difficulty: query.difficulty,
+            numberOfQuestions: query.limit,
+          });
+        });
 
-        console.log("Questions response status:", questionsResponse.status);
-        console.log(
-          "Questions response headers:",
-          Object.fromEntries(questionsResponse.headers.entries())
-        );
+        // Convert Map to array and set state
+        setSelectedQuestionBanks(Array.from(questionBanks.values()));
+      }
 
-        if (!questionsResponse.ok) {
-          const errorText = await questionsResponse.text();
-          console.error("Questions response error:", errorText);
-          throw new Error(
-            `Failed to fetch questions: ${questionsResponse.status} - ${errorText}`
-          );
-        }
-
-        const questionsResult = await questionsResponse.json();
-        console.log("Raw questions response:", questionsResult);
-
-        // Check if the response has the expected structure
-        if (!questionsResult || typeof questionsResult !== "object") {
-          console.error("Invalid questions response format:", questionsResult);
-          throw new Error("Invalid questions response format");
-        }
-
-        // If the response is an array, use it directly
-        const questionsData = Array.isArray(questionsResult)
-          ? questionsResult
-          : questionsResult.data || questionsResult.questions || [];
-
-        // Map _id to questionId for each question
-        const mappedQuestions = questionsData.map((question: any) => ({
-          ...question,
-          questionId:
-            question._id || question.questionId || Date.now().toString(),
-          timePerQuestion:
-            question.timePerQuestion || quizOptions.timePerQuestion,
-          scorePerQuestion:
-            question.scorePerQuestion || quizOptions.scorePerQuestion,
-        }));
-
-        setQuestions(mappedQuestions);
-      } catch (questionsError) {
-        console.error("Error fetching questions:", questionsError);
+      // Clear questions if using question banks
+      if (quizData.isExam) {
         setQuestions([]);
       }
     } catch (error) {
@@ -246,7 +323,7 @@ export default function EditQuiz() {
   };
 
   useEffect(() => {
-    console.log("quizData changed:", quizData); 
+    console.log("quizData changed:", quizData);
     if (quizData) {
       setValue("name", quizData.name);
       setValue("topic", quizData.topic);
@@ -260,10 +337,10 @@ export default function EditQuiz() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    console.log("Form field changed:", name, value); 
+    console.log("Form field changed:", name, value);
     setQuizData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === "isPublic" ? value === "true" : value,
     }));
   };
 
@@ -316,42 +393,118 @@ export default function EditQuiz() {
   };
 
   // Handle question update
-  const handleUpdateQuestion = (updatedQuestion: Question) => {
-    console.log("Updating question:", updatedQuestion);
-    if (!updatedQuestion.questionId) {
-      console.error("Cannot update question: missing questionId");
-      return;
+  const handleUpdateQuestion = async (updatedQuestion: Question) => {
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Send update to server
+      const response = await fetch(
+        `${API_BASE_URL}/question/${updatedQuestion._id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updatedQuestion),
+        }
+      );
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || "Failed to update question");
+      }
+
+      // Update local state with the response from server
+      setQuestions((prev) =>
+        prev.map((q) =>
+          q.questionId === updatedQuestion.questionId ? result.data : q
+        )
+      );
+
+      // Close the modal after successful update
+      setIsModalOpen(false);
+      setCurrentQuestion(null);
+    } catch (error) {
+      console.error("Error updating question:", error);
+      alert("Failed to update question. Please try again.");
     }
-    setQuestions((prev) =>
-      prev.map((q) =>
-        q.questionId === updatedQuestion.questionId ? updatedQuestion : q
-      )
-    );
   };
 
   // Handle question field update
-  const handleQuestionFieldUpdate = (
-    questionId: number | string,
+  const handleQuestionFieldUpdate = async (
+    questionId: string,
     field: string,
     value: any
   ) => {
-    if (!questionId) {
-      console.error("Cannot update field: missing questionId");
-      return;
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Find the question to update
+      const questionToUpdate = questions.find((q) => q._id === questionId);
+      if (!questionToUpdate) {
+        throw new Error("Question not found");
+      }
+
+      // Create updated question data
+      const updatedQuestion = {
+        ...questionToUpdate,
+        [field]: value,
+        options: questionToUpdate.answers.map((answer) => answer.text), // Ensure options field is present
+      };
+
+      // Send update to server
+      const response = await fetch(`${API_BASE_URL}/question/${questionId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          questionText: updatedQuestion.questionText,
+          questionType: updatedQuestion.questionType,
+          difficulty: updatedQuestion.difficulty,
+          timePerQuestion: Number(updatedQuestion.timePerQuestion),
+          scorePerQuestion: Number(updatedQuestion.scorePerQuestion),
+          options: updatedQuestion.answers.map((answer) => answer.text),
+          answers: updatedQuestion.answers.map((answer) => ({
+            text: answer.text,
+            isCorrect: answer.isCorrect,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `Failed to update question: ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        // Update local state with server response
+        setQuestions(
+          questions.map((q) =>
+            q._id === questionId
+              ? {
+                  ...result.data,
+                  timePerQuestion: Number(result.data.timePerQuestion),
+                  scorePerQuestion: Number(result.data.scorePerQuestion),
+                }
+              : q
+          )
+        );
+      } else {
+        throw new Error(result.message || "Failed to update question");
+      }
+    } catch (err) {
+      console.error("Error updating question field:", err);
+      const error = err as Error;
+      alert(error.message || "Failed to update question. Please try again.");
     }
-    console.log("Updating field:", { questionId, field, value });
-    setQuestions((prev) =>
-      prev.map((q) => {
-        if (q.questionId === questionId) {
-          console.log("Found question to update:", q);
-          return {
-            ...q,
-            [field]: value,
-          };
-        }
-        return q;
-      })
-    );
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -391,36 +544,42 @@ export default function EditQuiz() {
 
   // Save quiz
   const handleSaveQuiz = async () => {
-    if (questions.length < 1) {
-      return;
-    }
-
     try {
       setIsSaving(true);
       const token = await getToken();
       if (!token) throw new Error("Authentication required");
 
-      // First, update the quiz information
+      // Save the quiz first
       const formData = new FormData();
       formData.append("creator", userId || "");
       formData.append("name", quizData.name);
       formData.append("topic", quizData.topic);
       formData.append("difficulty", quizData.difficulty);
-      formData.append("isPublic", quizData.isPublic);
-      if (imageData) {
-        formData.append("imageUrl", imageData);
-      }
+      formData.append("isPublic", quizData.isPublic.toString());
+      formData.append("isExam", isExam.toString());
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
 
-      console.log("Updating quiz with data:", {
-        name: quizData.name,
-        topic: quizData.topic,
-        difficulty: quizData.difficulty,
-        isPublic: quizData.isPublic,
-        timePerQuestion: quizOptions.timePerQuestion,
-        scorePerQuestion: quizOptions.scorePerQuestion,
-      });
+      // Add question bank queries if using exam mode
+      if (isExam && selectedQuestionBanks.length > 0) {
+        const questionBankQueries = selectedQuestionBanks.flatMap((bank) =>
+          bank.sections.map((section) => ({
+            examSetId: bank.examSetId,
+            examName: bank.name,
+            difficulty: section.difficulty,
+            limit: section.numberOfQuestions,
+          }))
+        );
+        formData.append(
+          "questionBankQueries",
+          JSON.stringify(questionBankQueries)
+        );
+      }
+
+      // Add image if exists
+      if (imageData) {
+        formData.append("imageUrl", imageData);
+      }
 
       const response = await fetch(`${API_BASE_URL}/quiz/${id}`, {
         method: "PUT",
@@ -430,62 +589,19 @@ export default function EditQuiz() {
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.message || `Failed to update quiz: ${response.status}`
-        );
-      }
-
       const quizResult = await response.json();
-      if (!quizResult.success) {
-        throw new Error(quizResult.message || "Failed to update quiz");
-      }
-
-      // Then, delete all existing questions for this quiz
-      const deleteResponse = await fetch(
-        `${API_BASE_URL}/question/quiz/${id}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!deleteResponse.ok) {
-        console.error(
-          "Failed to delete existing questions:",
-          await deleteResponse.text()
-        );
-        // Continue anyway as we'll overwrite the questions
-      }
-
-      // Finally, save the updated questions
-      const updatedQuestions = questions.map((question) => ({
-        ...question,
-        quizId: id || "",
-      }));
-
-      const saveResult = await handleSaveQuestion(updatedQuestions);
-      if (saveResult.success) {
-        // Add a small delay before navigation
-        setTimeout(() => {
-          navigate(-1);
-        }, 500);
+      if (quizResult.success) {
+        // Fetch updated quiz data
+        await fetchQuiz();
+        navigate(-1);
       } else {
-        throw new Error(saveResult.message || "Failed to save questions");
+        throw new Error(quizResult.message || "Cannot update Quiz");
       }
     } catch (error) {
-      console.error("Error updating quiz:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to update quiz. Please try again."
-      );
+      console.error("Error saving quiz:", error);
+      alert("Failed to save quiz. Please try again.");
     } finally {
       setIsSaving(false);
-      
     }
   };
 
@@ -540,13 +656,194 @@ export default function EditQuiz() {
     setIsModal((prevVal) => !prevVal);
   };
 
-  const duplicateQuestion = (question: Question) => {
-    const duplicatedQuestion = {
-      ...question,
-      questionId: Date.now(),
-    };
+  const duplicateQuestion = async (question: Question) => {
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
 
-    setQuestions((prevQuestions) => [...prevQuestions, duplicatedQuestion]);
+      // First create the duplicated question
+      const newQuestionData = {
+        quizId: id,
+        questionText: question.questionText,
+        questionType: question.questionType,
+        difficulty: question.difficulty,
+        timePerQuestion: Number(question.timePerQuestion),
+        scorePerQuestion: Number(question.scorePerQuestion),
+        options: question.answers.map((answer) => answer.text),
+        answers: question.answers.map((answer) => ({
+          text: answer.text,
+          isCorrect: answer.isCorrect,
+        })),
+      };
+
+      console.log("Creating duplicated question with data:", newQuestionData);
+
+      // Create new question in database
+      const createResponse = await fetch(`${API_BASE_URL}/question`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(newQuestionData),
+      });
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(
+          errorData.message ||
+            `Failed to create duplicated question: ${createResponse.status}`
+        );
+      }
+
+      const createResult = await createResponse.json();
+
+      if (!createResult.success) {
+        throw new Error(
+          createResult.message || "Failed to create duplicated question"
+        );
+      }
+
+      // Get the newly created question's ID
+      const newQuestionId = createResult.question._id;
+
+      // Get current quiz data first
+      const quizResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!quizResponse.ok) {
+        // If we can't get quiz data, delete the created question
+        await fetch(`${API_BASE_URL}/question/${newQuestionId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        throw new Error("Failed to get current quiz data");
+      }
+
+      const quizData = await quizResponse.json();
+
+      if (!quizData.success) {
+        throw new Error(quizData.message || "Failed to get quiz data");
+      }
+
+      // Prepare form data with all current quiz data plus the new question
+      const formData = new FormData();
+      formData.append("creator", quizData.data.creator || userId || "");
+      formData.append("name", quizData.data.name || "");
+      formData.append("topic", quizData.data.topic || "");
+      formData.append("difficulty", quizData.data.difficulty || "");
+      formData.append("isPublic", String(quizData.data.isPublic));
+      formData.append("isExam", String(quizData.data.isExam || false));
+      formData.append(
+        "timePerQuestion",
+        String(quizData.data.timePerQuestion || 30)
+      );
+      formData.append(
+        "scorePerQuestion",
+        String(quizData.data.scorePerQuestion || 1)
+      );
+
+      // Add the new question to the questions array
+      const updatedQuestions = [...questions.map((q) => q._id), newQuestionId];
+      formData.append("questions", JSON.stringify(updatedQuestions));
+
+      // If there's an existing image, include it
+      if (quizData.data.imageUrl) {
+        formData.append("imageUrl", quizData.data.imageUrl);
+      }
+
+      // Now update the quiz
+      const quizUpdateResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!quizUpdateResponse.ok) {
+        // If quiz update fails, try to delete the created question to maintain consistency
+        await fetch(`${API_BASE_URL}/question/${newQuestionId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        throw new Error("Failed to update quiz with new question");
+      }
+
+      const quizUpdateResult = await quizUpdateResponse.json();
+
+      if (!quizUpdateResult.success) {
+        throw new Error(quizUpdateResult.message || "Failed to update quiz");
+      }
+
+      // Add the new question to local state
+      const duplicatedQuestion = {
+        ...createResult.question,
+        questionId: createResult.question._id,
+        _id: createResult.question._id,
+        timePerQuestion: Number(question.timePerQuestion),
+        scorePerQuestion: Number(question.scorePerQuestion),
+        options: question.answers.map((answer) => answer.text),
+      };
+
+      console.log("Successfully duplicated question:", duplicatedQuestion);
+      setQuestions([...questions, duplicatedQuestion]);
+
+      // Show success message
+      alert("Đã sao chép câu hỏi thành công!");
+    } catch (error) {
+      console.error("Error duplicating question:", error);
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("Không thể sao chép câu hỏi. Vui lòng thử lại.");
+      }
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Delete from server
+      const response = await fetch(`${API_BASE_URL}/question/${questionId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `Failed to delete question: ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      // Check for success flag or message indicating success
+      if (result.success || result.message.includes("xóa thành công")) {
+        // Refresh the questions list or remove the question from state
+        setQuestions(questions.filter((q) => q._id !== questionId));
+      } else {
+        throw new Error(result.message || "Failed to delete question");
+      }
+    } catch (err) {
+      console.error("Error deleting question:", err);
+      // Only show error if it's not a success message
+      const error = err as Error;
+      if (!error.message.includes("xóa thành công")) {
+        alert(error.message || "Failed to delete question. Please try again.");
+      }
+    }
   };
 
   const handleDeleteQuiz = async () => {
@@ -586,6 +883,355 @@ export default function EditQuiz() {
     }
   };
 
+  const handleAddQuestionsFromBank = async (
+    questionBankQueries: Array<{
+      examSetId: string;
+      difficulty: string;
+      limit: number;
+    }>,
+    examName: string
+  ) => {
+    try {
+      setIsSaving(true);
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Get existing questionBankQueries from current quiz
+      const quizResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!quizResponse.ok) {
+        throw new Error("Failed to fetch current quiz data");
+      }
+
+      const quizData = await quizResponse.json();
+      const existingQueries = quizData.data.questionBankQueries || [];
+
+      // Combine existing and new queries
+      const updatedQueries = [...existingQueries, ...questionBankQueries];
+
+      // Update quiz with combined question bank queries
+      const formData = new FormData();
+      formData.append("creator", userId || "");
+      formData.append("name", quizData.data.name);
+      formData.append("topic", quizData.data.topic);
+      formData.append("difficulty", quizData.data.difficulty);
+      formData.append("isPublic", quizData.data.isPublic);
+      formData.append("isExam", "true");
+      formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
+      formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
+
+      // Add examName to each query before saving
+      const queriesWithNames = questionBankQueries.map((query) => ({
+        ...query,
+        examName,
+      }));
+      formData.append(
+        "questionBankQueries",
+        JSON.stringify([...existingQueries, ...queriesWithNames])
+      );
+
+      // Nếu có ảnh hiện tại, thêm vào formData
+      if (imageData) {
+        formData.append("imageUrl", imageData);
+      } else if (quizData.data.imageUrl) {
+        formData.append("imageUrl", quizData.data.imageUrl);
+      }
+
+      const updateResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(
+          errorData.message || "Failed to update quiz with question bank"
+        );
+      }
+
+      const updateResult = await updateResponse.json();
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.message || "Failed to update quiz");
+      }
+
+      // Add to selected banks list
+      const sections = questionBankQueries.map((query) => ({
+        difficulty: query.difficulty,
+        numberOfQuestions: query.limit,
+      }));
+
+      setSelectedQuestionBanks((prev) => [
+        ...prev,
+        {
+          examSetId: questionBankQueries[0].examSetId,
+          name: examName,
+          sections,
+        },
+      ]);
+
+      // Clear manual questions if any
+      setQuestions([]);
+      setActiveNewQuestion(false);
+      setIsSelectQuizModalOpen(false);
+
+      // Update local state with new quiz data
+      setQuizData({
+        ...quizData.data,
+        questionBankQueries: [...existingQueries, ...queriesWithNames],
+        isExam: true,
+      });
+
+      // Set isExam to true since we now have question banks
+      setIsExam(true);
+    } catch (error) {
+      console.error("Error adding questions from bank:", error);
+      alert("Failed to add questions from bank. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Update removeQuestionBank function to handle questionBankQueries
+  const removeQuestionBank = async (examSetId: string) => {
+    try {
+      setIsSaving(true);
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Get current quiz data
+      const quizResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!quizResponse.ok) {
+        throw new Error("Failed to fetch current quiz data");
+      }
+
+      const quizData = await quizResponse.json();
+      const currentQueries = quizData.data.questionBankQueries || [];
+
+      // Filter out the removed bank's queries
+      const updatedQueries = currentQueries.filter(
+        (query: any) => query.examSetId !== examSetId
+      );
+
+      // Remove bank from selected list
+      setSelectedQuestionBanks((prev) =>
+        prev.filter((bank) => bank.examSetId !== examSetId)
+      );
+
+      // Update quiz with filtered queries
+      const formData = new FormData();
+      formData.append("creator", userId || "");
+      formData.append("name", quizData.data.name);
+      formData.append("topic", quizData.data.topic);
+      formData.append("difficulty", quizData.data.difficulty);
+      formData.append("isPublic", quizData.data.isPublic);
+      formData.append("isExam", String(updatedQueries.length > 0));
+      formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
+      formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
+      formData.append("questionBankQueries", JSON.stringify(updatedQueries));
+
+      const updateResponse = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to update quiz after removing question bank");
+      }
+
+      const updateResult = await updateResponse.json();
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.message || "Failed to update quiz");
+      }
+
+      // If no more banks, allow manual questions
+      if (updatedQueries.length === 0) {
+        setActiveNewQuestion(true);
+        setIsExam(false);
+      }
+    } catch (error) {
+      console.error("Error removing question bank:", error);
+      alert("Failed to remove question bank. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Update fetchQuestionBanks in useEffect
+  useEffect(() => {
+    const fetchQuestionBanks = async () => {
+      if (!id) return;
+
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        const response = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.success && data.data.isExam) {
+          setIsExam(true);
+          setActiveNewQuestion(false);
+
+          // Group queries by examSetId
+          const questionBanks = new Map();
+          data.data.questionBankQueries?.forEach((query: any) => {
+            if (!questionBanks.has(query.examSetId)) {
+              questionBanks.set(query.examSetId, {
+                examSetId: query.examSetId,
+                name: query.examName || "Question Bank",
+                sections: [],
+              });
+            }
+            questionBanks.get(query.examSetId).sections.push({
+              difficulty: query.difficulty,
+              numberOfQuestions: query.limit,
+            });
+          });
+
+          // Convert Map to array and set state
+          setSelectedQuestionBanks(Array.from(questionBanks.values()));
+        }
+      } catch (error) {
+        console.error("Error fetching question banks:", error);
+      }
+    };
+
+    fetchQuestionBanks();
+  }, [id, getToken]);
+
+  const handleSaveQuizz = async () => {
+    try {
+      setIsSaving(true);
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      const formData = new FormData();
+      formData.append("creator", userId || "");
+      formData.append("name", quizData.name);
+      formData.append("topic", quizData.topic);
+      formData.append("difficulty", quizData.difficulty);
+      formData.append("isPublic", String(quizData.isPublic));
+      if (imageData) {
+        formData.append("imageUrl", imageData);
+      }
+      formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
+      formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
+
+      const response = await fetch(`${API_BASE_URL}/quiz/${id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const quizResult = await response.json();
+      if (quizResult.success) {
+        setActiveNewQuestion(false);
+      } else {
+        throw new Error(quizResult.message || "Cannot update Quiz");
+      }
+    } catch (error) {
+      console.error("Error saving quiz:", error);
+      alert("Failed to save quiz. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleApplyToAll = async () => {
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Authentication required");
+
+      // Update all questions with current quizOptions
+      const updateQuestionsPromises = questions.map(async (question) => {
+        if (!question._id) return;
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/question/${question._id}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                ...question,
+                timePerQuestion: Number(quizOptions.timePerQuestion),
+                scorePerQuestion: Number(quizOptions.scorePerQuestion),
+                options: question.answers.map((answer) => answer.text),
+                answers: question.answers.map((answer) => ({
+                  text: answer.text,
+                  isCorrect: answer.isCorrect,
+                })),
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.message ||
+                `Failed to update question: ${response.status}`
+            );
+          }
+
+          return await response.json();
+        } catch (error) {
+          console.error("Error updating question:", error);
+          throw error;
+        }
+      });
+
+      // Wait for all question updates to complete
+      await Promise.all(updateQuestionsPromises);
+
+      // Update local state
+      setQuestions(
+        questions.map((question) => ({
+          ...question,
+          timePerQuestion: Number(quizOptions.timePerQuestion),
+          scorePerQuestion: Number(quizOptions.scorePerQuestion),
+        }))
+      );
+
+      alert("Đã cập nhật tất cả câu hỏi thành công!");
+    } catch (error) {
+      console.error("Error applying to all questions:", error);
+      alert("Không thể cập nhật tất cả câu hỏi. Vui lòng thử lại.");
+    }
+  };
+
+  const handleQuestionCreated = (newQuestion: any) => {
+    // Add the new question to the questions array
+    setQuestions((prevQuestions) => [...prevQuestions, newQuestion]);
+  };
+
   if (isLoading && !quizData) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -605,7 +1251,7 @@ export default function EditQuiz() {
         </div>
         <button
           onClick={() => {
-            navigate('/dashboard/my-quiz', { replace: true });
+            navigate("/dashboard/my-quiz", { replace: true });
           }}
           className="px-4 py-2 bg-orange text-white rounded btn-hover"
         >
@@ -622,40 +1268,50 @@ export default function EditQuiz() {
           e.preventDefault();
         }}
       >
-        <nav className="h-16 fixed left-0 right-0 border-b-1 z-10 bg-background py-2 px-4 flex justify-between items-center">
+        <nav className="h-16 fixed left-0 right-0 border-b bg-white/80 backdrop-blur-sm z-10 py-2 px-4 flex justify-between items-center shadow-sm">
           <div className="flex items-center gap-5">
             <div
               onClick={() => navigate(-1)}
-              className="cursor-pointer flex items-center justify-center rounded font-black hover:bg-gray-100 p-2"
+              className="cursor-pointer flex items-center justify-center rounded-full w-10 h-10 hover:bg-gray-100 transition-colors duration-200"
             >
               <HugeiconsIcon icon={Backward01Icon} />
             </div>
-            <div className="h-10 hover:bg-nude-light rounded cursor-pointer flex items-center">
-              <p className="font-semibold">{quizData?.name || "Edit Quiz"}</p>
+            <div className="h-10 px-3 hover:bg-nude-light rounded-lg cursor-pointer flex items-center transition-colors duration-200">
+              <input
+                type="text"
+                placeholder="Enter Quiz name"
+                value={quizData.name}
+                onChange={(e) =>
+                  setQuizData({ ...quizData, name: e.target.value })
+                }
+                className="font-semibold bg-transparent outline-none w-64"
+              />
             </div>
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setShowDeleteModal(true)}
-              className="border-1 p-3 rounded text-red-wine flex text-lg items-center gap-2 btn-hover"
+              className="flex items-center gap-2 px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition-colors duration-200"
             >
-              <p className="font-semibold">Xóa Squiz</p>
+              <HugeiconsIcon icon={Delete01Icon} size={20} />
+              <span className="font-medium">Delete Quiz</span>
             </button>
             <button
               onClick={handleSubmit(handleSaveQuiz)}
-              className="flex items-center gap-5"
+              className="flex items-center gap-2"
               disabled={isSaving}
             >
-              <div className="p-3 flex items-center cursor-pointer bg-orange btn-hover rounded font-semibold text-lg">
+              <div className="p-3 flex items-center cursor-pointer bg-orange hover:bg-orange/90 transition-colors duration-200 rounded-lg font-semibold text-lg">
                 {isSaving ? (
                   <div className="flex items-center gap-2">
                     <span className="loader"></span>
-                    <p className="pl-1">Đang cập nhật...</p>
+                    <p className="pl-1">Updating Quiz...</p>
                   </div>
                 ) : (
                   <>
-                    <p>Lưu Squiz</p>
+                    <i className="fa-solid fa-floppy-disk mr-2"></i>
+                    <p>Save Quiz</p>
                   </>
                 )}
               </div>
@@ -663,63 +1319,63 @@ export default function EditQuiz() {
           </div>
         </nav>
 
-        {/* Main Content */}
         <main className="pt-28 grid grid-cols-8 gap-8">
           {/* Sidebar */}
-          <Quizbar quizOptions={quizOptions} setQuizOptions={setQuizOptions} />
+          <Quizbar
+            quizOptions={quizOptions}
+            setQuizOptions={setQuizOptions}
+            onApplyToAll={handleApplyToAll}
+          />
 
           {/* Quiz Content */}
           <div className="col-span-5">
             {/* Quiz Information */}
-            <div className="w-full px-8 py-5 bg-white rounded-lg col-span-5 box-shadow">
-              <p className="text-xl mb-5">Thông tin Quiz</p>
-              <div className="grid grid-cols-2 mb-2 gap-2">
+            <div className="w-full px-8 py-6 bg-white rounded-xl col-span-5 shadow-md hover:shadow-lg transition-shadow duration-200">
+              <p className="text-xl font-semibold mb-6">Quiz Information</p>
+              <div className="grid grid-cols-2 gap-4 mb-6">
                 <input
                   {...register("name", {
-                    required: "Tên quiz không được để trống",
+                    required: "Quiz name cannot be empty",
                   })}
                   type="text"
                   value={quizData.name}
                   onChange={handleQuizDataChange}
-                  placeholder="Nhập tên Quiz"
-                  className={`border p-2.5 text-sm font-semibold rounded-lg ${
-                    errors.name ? "border-red-wine" : "border-gray-300"
-                  }`}
+                  placeholder="Enter Quiz name"
+                  className={`border p-3 text-sm font-medium rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200
+                  ${errors.name ? "border-red-500" : "border-gray-300"}`}
                 />
                 <select
                   {...register("topic", {
-                    required: "Topic không được để trống",
+                    required: "Topic cannot be empty",
                   })}
                   id="Topic"
                   name="topic"
                   value={quizData.topic}
                   onChange={handleQuizDataChange}
-                  className={`bg-white border outline-none text-sm rounded-lg focus:ring-blue-500 block w-full p-2.5 font-semibold ${
-                    errors.topic ? "border-red-wine" : "border-gray-300"
-                  }`}
+                  className={`bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200
+                  ${errors.topic ? "border-red-500" : "border-gray-300"}`}
                 >
-                  <option value="">Chủ đề</option>
-                  <option value="math">Toán</option>
-                  <option value="english">Tiếng Anh</option>
-                  <option value="physics">Vật lý</option>
-                  <option value="history">Lịch sử</option>
-                  <option value="other">Khác</option>
+                  <option value="">Select Topic</option>
+                  <option value="math">Mathematics</option>
+                  <option value="english">English</option>
+                  <option value="physics">Physics</option>
+                  <option value="history">History</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-4 mb-6">
                 <select
                   {...register("difficulty", {
-                    required: "Độ khó không được để trống",
+                    required: "Difficulty cannot be empty",
                   })}
                   id="Difficulty"
                   name="difficulty"
                   value={quizData.difficulty}
                   onChange={handleQuizDataChange}
-                  className={`bg-white border outline-none text-sm rounded-lg focus:ring-blue-500 block w-full p-2.5 font-semibold ${
-                    errors.difficulty ? "border-red-wine" : "border-gray-300"
-                  }`}
+                  className={`bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200
+                  ${errors.difficulty ? "border-red-500" : "border-gray-300"}`}
                 >
-                  <option value="">Độ khó</option>
+                  <option value="">Select Difficulty</option>
                   {DIFFICULTY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -730,184 +1386,250 @@ export default function EditQuiz() {
                   {...register("isPublic")}
                   id="Display"
                   name="isPublic"
-                  value={quizData.isPublic}
+                  value={String(quizData.isPublic)}
                   onChange={handleQuizDataChange}
-                  className="bg-white border outline-none border-gray-300 text-sm rounded-lg focus:ring-blue-500 block w-full p-2.5 font-semibold"
+                  className="bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
                 >
-                  <option value="public">Công khai</option>
-                  <option value="private">Riêng tư</option>
+                  <option value="true">Public</option>
+                  <option value="false">Private</option>
                 </select>
               </div>
-              <div className="mt-5">
-                <div className="relative">
-                  <input
-                    accept="image/*"
-                    {...register("imageUrl", {
-                      required:
-                        !quizData?.imageUrl && !imageData && "Hình ảnh phải có",
-                    })}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    type="file"
-                    onChange={handleImageUpload}
-                    id="image-upload"
-                    disabled={isUploading}
+              <div className="relative">
+                <input
+                  accept="image/*"
+                  {...register("imageUrl", {
+                    required:
+                      !quizData?.imageUrl &&
+                      !imageData &&
+                      "Quiz image is required",
+                  })}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  type="file"
+                  onChange={handleImageUpload}
+                  id="image-upload"
+                  disabled={isUploading}
+                />
+                <label
+                  htmlFor="image-upload"
+                  className={`cursor-pointer flex items-center gap-2 p-3 border border-dashed border-gray-300 rounded-lg hover:border-orange/50 transition-colors duration-200 ${
+                    isUploading ? "opacity-50" : ""
+                  }`}
+                >
+                  <HugeiconsIcon
+                    icon={ImageUploadIcon}
+                    size={24}
+                    className="text-gray-500"
                   />
-
-                  <label
-                    htmlFor="image-upload"
-                    className={`cursor-pointer flex items-center gap-1 mt-5 mb-2 ${
-                      isUploading ? "opacity-50" : ""
-                    }`}
-                  >
-                    <HugeiconsIcon
-                      size={30}
-                      icon={ImageUploadIcon}
-                      className="text-2xl text-gray-500 hover:text-orange transition-colors"
-                    />{" "}
-                    <p className="text-md font-semibold">
-                      {isUploading
-                        ? "Đang tải ảnh lên..."
-                        : "Tải ảnh nền cho Squiz"}
-                    </p>
-                  </label>
+                  <span className="text-sm font-medium text-gray-700">
+                    {isUploading
+                      ? "Uploading image..."
+                      : "Upload Quiz background image"}
+                  </span>
+                </label>
+              </div>
+              {errors.imageUrl && (
+                <p className="mt-2 text-red-500 text-sm">
+                  {errors.imageUrl.message?.toString()}
+                </p>
+              )}
+              {isUploading && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="loader"></span>
+                  <p className="text-sm text-gray-600">Processing image...</p>
                 </div>
-                {errors.imageUrl && (
-                  <p className="mt-2 text-red-wine text-sm">
-                    {errors.imageUrl.message?.toString()}
-                  </p>
-                )}
-                {isUploading && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="loader"></span>
-                    <p className="text-sm text-gray-600">Đang xử lý ảnh...</p>
-                  </div>
-                )}
-                <div className="flex mt-2">
-                  {imageData ? (
-                    <img
-                      src={URL.createObjectURL(imageData)}
-                      alt="Quiz cover"
-                      className="w-60 h-40 object-cover rounded"
-                    />
-                  ) : quizData?.imageUrl ? (
-                    <img
-                      src={quizData.imageUrl}
-                      alt="Quiz cover"
-                      className="w-60 h-40 object-cover rounded"
-                    />
-                  ) : null}
-                </div>
+              )}
+              <div className="mt-4">
+                {imageData ? (
+                  <img
+                    src={URL.createObjectURL(imageData)}
+                    alt="Preview"
+                    className="rounded-lg w-full max-h-48 object-cover"
+                  />
+                ) : quizData?.imageUrl ? (
+                  <img
+                    src={quizData.imageUrl}
+                    alt="Quiz cover"
+                    className="rounded-lg w-full max-h-48 object-cover"
+                  />
+                ) : null}
               </div>
             </div>
 
             {/* Questions Section */}
             <div>
-              <div className="flex justify-between mt-5">
-                <p className="text-xl">
-                  {questions.length} Câu hỏi ({totalScoreOfQuiz()} điểm)
+              <div className="flex justify-between mt-8 mb-6">
+                <p className="text-xl font-semibold">
+                  {questions.length} Questions ({totalScoreOfQuiz()} points)
                 </p>
-                <button
-                  type="button"
-                  onClick={showFormQuestion}
-                  className="flex hover:bg-gray-50 cursor-pointer bg-white border-orange-semibold border-1 items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
-                >
-                  <i className="fa-solid fa-plus"></i>
-                  <p>Câu hỏi mới</p>
-                </button>
+                <div className="flex gap-3">
+                  {!questions.length && (
+                    <button
+                      onClick={() => setIsSelectQuizModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 border border-darkblue text-darkblue rounded-lg hover:bg-darkblue hover:text-white transition-colors duration-200"
+                    >
+                      <i className="fa-solid fa-plus"></i>
+                      <span className="font-medium">
+                        Thêm câu hỏi từ ngân hàng đề
+                      </span>
+                    </button>
+                  )}
+                  {!isExam && (
+                    <button
+                      onClick={handleClickModal}
+                      className="flex items-center gap-2 px-4 py-2 bg-darkblue text-white rounded-lg hover:bg-darkblue/90 transition-colors duration-200"
+                    >
+                      <i className="fa-solid fa-plus"></i>
+                      <span className="font-medium">Nhập câu hỏi thủ công</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {questions.length === 0 && (
-                <div className="flex justify-center border border-red-500 p-4 my-4 rounded">
-                  <p className="text-red-wine text-sm font-semibold">
-                    Vui lòng nhập ít nhất 1 câu hỏi
+              {selectedQuestionBanks.length > 0 && (
+                <div className="mt-8 space-y-4">
+                  <p className="text-xl font-semibold mb-4">
+                    Selected Question Banks
+                  </p>
+                  {selectedQuestionBanks.map((bank) => (
+                    <div
+                      key={bank.examSetId}
+                      className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200"
+                    >
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-lg">{bank.name}</h3>
+                        <button
+                          onClick={() => removeQuestionBank(bank.examSetId)}
+                          className="text-red-500 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors duration-200"
+                        >
+                          <HugeiconsIcon
+                            icon={Delete01Icon}
+                            size={20}
+                            className="group-hover:text-red-500"
+                          />
+                        </button>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-4">
+                        {bank.sections.map((section, index) => (
+                          <div
+                            key={index}
+                            className="bg-gray-50 p-3 rounded-lg"
+                          >
+                            <span className="text-sm font-medium text-gray-700">
+                              {section.difficulty === "e"
+                                ? "Easy"
+                                : section.difficulty === "m"
+                                ? "Medium"
+                                : "Hard"}
+                            </span>
+                            <p className="text-2xl font-semibold mt-1">
+                              {section.numberOfQuestions}
+                              <span className="text-sm font-normal text-gray-500 ml-1">
+                                questions
+                              </span>
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {questions.length === 0 && selectedQuestionBanks.length === 0 && (
+                <div className="flex justify-center p-4 my-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-500 text-sm font-medium">
+                    Please add at least one question or select from question
+                    bank
                   </p>
                 </div>
               )}
 
-              {/* Questions List */}
-              <div>
-                {questions.map((question, index) => (
-                  <div
-                    key={question.questionId || `question-${index}`}
-                    className="w-full px-8 py-5 mt-5 bg-white rounded-lg col-span-5 box-shadow"
-                  >
-                    <div className="flex justify-between">
-                      <div className="flex gap-2">
-                        <div className="border cursor-grab p-2 rounded flex items-center">
-                          <HugeiconsIcon icon={Drag04Icon} size={20} />
-                        </div>
-                        <div className="border p-2 rounded flex items-center gap-2">
-                          <i className="fa-regular fa-circle-check"></i>
-                          <p className="text-sm">{question.questionType}</p>
-                        </div>
-                        <div>
+              {/* Question List */}
+              {!isExam &&
+                questions.map((question, index) => {
+                  // Skip if question._id is undefined
+                  if (!question._id) return null;
+
+                  const questionId = question._id;
+
+                  return (
+                    <div
+                      key={questionId}
+                      className="w-full px-8 py-6 mt-4 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                    >
+                      <div className="flex justify-between">
+                        <div className="flex gap-3">
+                          <div className="border cursor-grab p-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                            <HugeiconsIcon icon={Drag04Icon} size={20} />
+                          </div>
+                          <div className="border p-2 rounded-lg flex items-center gap-2 bg-orange/5 border-orange/20">
+                            <i className="fa-regular fa-circle-check text-orange"></i>
+                            <p className="text-sm font-medium text-orange">
+                              {question.questionType}
+                            </p>
+                          </div>
                           <select
                             name="timePerQuestion"
-                            id={`time-${question.questionId}`}
-                            value={question.timePerQuestion}
+                            id={`time-${questionId}`}
+                            value={Number(question.timePerQuestion)}
                             onChange={(e) => {
-                              console.log("Question being updated:", question);
+                              console.log("Updating time:", e.target.value);
                               handleQuestionFieldUpdate(
-                                question.questionId,
+                                questionId,
                                 "timePerQuestion",
                                 Number(e.target.value)
                               );
                             }}
-                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg block w-full p-2.5"
+                            className="bg-white border outline-none text-sm rounded-lg block p-2 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
                           >
                             {TIME_OPTIONS.map((time) => (
                               <option
-                                key={`time-${time}-${question.questionId}`}
+                                key={`time-${time}-${questionId}`}
                                 value={time}
                               >
-                                {time} giây
+                                {time}s
                               </option>
                             ))}
                           </select>
-                        </div>
-                        <div>
                           <select
                             name="scorePerQuestion"
-                            id={`score-${question.questionId}`}
-                            value={question.scorePerQuestion}
+                            id={`score-${questionId}`}
+                            value={Number(question.scorePerQuestion)}
                             onChange={(e) => {
-                              console.log("Question being updated:", question);
+                              console.log("Updating score:", e.target.value);
                               handleQuestionFieldUpdate(
-                                question.questionId,
+                                questionId,
                                 "scorePerQuestion",
                                 Number(e.target.value)
                               );
                             }}
-                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg block w-full p-2.5 font-semibold"
+                            className="bg-white border outline-none text-sm rounded-lg block p-2 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
                           >
                             {SCORE_OPTIONS.map((score) => (
                               <option
-                                key={`score-${score}-${question.questionId}`}
+                                key={`score-${score}-${questionId}`}
                                 value={score}
                               >
-                                {score} điểm
+                                {score} points
                               </option>
                             ))}
                           </select>
-                        </div>
-                        <div>
                           <select
                             name="difficulty"
-                            id={`difficulty-${question.questionId}`}
+                            id={`difficulty-${questionId}`}
                             value={question.difficulty}
                             onChange={(e) => {
-                              console.log("Question being updated:", question);
                               handleQuestionFieldUpdate(
-                                question.questionId,
+                                questionId,
                                 "difficulty",
                                 e.target.value
                               );
                             }}
-                            className="bg-white border outline-none border-gray-300 text-sm rounded-lg block w-full p-2.5 font-semibold"
+                            className="bg-white border outline-none text-sm rounded-lg block p-2 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
                           >
                             {DIFFICULTY_OPTIONS.map((option) => (
                               <option
-                                key={`difficulty-${option.value}-${question.questionId}`}
+                                key={`difficulty-${option.value}-${questionId}`}
                                 value={option.value}
                               >
                                 {option.label}
@@ -915,166 +1637,228 @@ export default function EditQuiz() {
                             ))}
                           </select>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <div
-                          onClick={() => duplicateQuestion(question)}
-                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
-                        >
-                          <HugeiconsIcon icon={Copy01Icon} size={20} />
-                        </div>
-                        <div
-                          onClick={() => handleEditClick(question)}
-                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
-                        >
-                          <HugeiconsIcon icon={NoteEditIcon} size={20} />
-                          <p className="text-sm">Chỉnh sửa</p>
-                        </div>
-                        <div
-                          onClick={() => {
-                            setQuestions((prev) =>
-                              prev.filter(
-                                (q) => q.questionId !== question.questionId
-                              )
-                            );
-                          }}
-                          className="border hover:bg-gray-50 cursor-pointer p-2 rounded flex items-center gap-2"
-                        >
-                          <HugeiconsIcon icon={Delete01Icon} size={20} />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-5">
-                      <p>{question.questionText}</p>
-                      <p className="text-sm mt-5 mb-2 font-semibold">Answers</p>
-                      <div className="grid grid-cols-2 grid-rows-2 gap-2">
-                        {question.answers.map((answer, answerIndex) => (
-                          <div
-                            key={`answer-${question.questionId}-${answerIndex}`}
-                            className="flex items-center gap-2"
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => duplicateQuestion(question)}
+                            className="border hover:bg-gray-50 p-2 rounded-lg transition-colors duration-200 group"
                           >
-                            {answer.isCorrect ? (
-                              <HugeiconsIcon
-                                icon={Tick01Icon}
-                                size={24}
-                                color="green"
-                              />
-                            ) : (
-                              <HugeiconsIcon
-                                icon={Cancel01Icon}
-                                size={20}
-                                color="red"
-                              />
-                            )}
-                            <p>{answer.text}</p>
-                          </div>
-                        ))}
+                            <HugeiconsIcon
+                              icon={Copy01Icon}
+                              size={20}
+                              className="group-hover:text-orange"
+                            />
+                          </button>
+                          <button
+                            onClick={() => handleEditClick(question)}
+                            className="border hover:bg-gray-50 p-2 rounded-lg transition-colors duration-200 flex items-center gap-2 group"
+                          >
+                            <HugeiconsIcon
+                              icon={NoteEditIcon}
+                              size={20}
+                              className="group-hover:text-orange"
+                            />
+                            <span className="text-sm font-medium group-hover:text-orange">
+                              Edit
+                            </span>
+                          </button>
+                          <button
+                            onClick={() =>
+                              question._id
+                                ? handleDeleteQuestion(question._id)
+                                : null
+                            }
+                            className="border hover:bg-red-50 p-2 rounded-lg transition-colors duration-200 group"
+                          >
+                            <HugeiconsIcon
+                              icon={Delete01Icon}
+                              size={20}
+                              className="group-hover:text-red-500"
+                            />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-6">
+                        <p className="text-gray-800">{question.questionText}</p>
+                        <p className="text-sm font-medium text-gray-600 mt-6 mb-3">
+                          Answers
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          {question.answers.map((answer, answerIndex) => (
+                            <div
+                              key={`answer-${questionId}-${answerIndex}`}
+                              className={`flex items-center gap-3 p-3 rounded-lg ${
+                                answer.isCorrect
+                                  ? "bg-green-50 border border-green-100"
+                                  : "bg-red-50 border border-red-100"
+                              }`}
+                            >
+                              {answer.isCorrect ? (
+                                <HugeiconsIcon
+                                  icon={Tick01Icon}
+                                  size={20}
+                                  className="text-green-600"
+                                />
+                              ) : (
+                                <HugeiconsIcon
+                                  icon={Cancel01Icon}
+                                  size={20}
+                                  className="text-red-500"
+                                />
+                              )}
+                              <p className="text-sm font-medium">
+                                {answer.text}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
-                {/* New Question */}
-                <div className="flex justify-center mt-5 mb-10">
-                  <div
-                    onClick={showFormQuestion}
-                    className="flex cursor-pointer bg-darkblue btn-hover text-background items-center gap-2 py-1 px-3 rounded font-semibold text-lg"
+              {/* New Question Button */}
+              {!isExam && questions.length > 0 && (
+                <div className="flex justify-center my-8">
+                  <button
+                    onClick={handleClickModal}
+                    className="flex items-center gap-2 px-6 py-3 bg-darkblue text-white rounded-lg hover:bg-darkblue/90 transition-colors duration-200"
                   >
                     <i className="fa-solid fa-plus"></i>
-                    <p>Câu hỏi mới</p>
-                  </div>
+                    <span className="font-medium">New Question</span>
+                  </button>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </main>
 
         {/* New Question Option Modal */}
-        {isModal ? (
+        {isModal && (
           <div
             onClick={handleClickModal}
-            className="fixed left-0 top-0 right-0 bottom-0 bg-modal flex justify-center items-center"
+            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
           >
             <div
               onClick={(event) => event.stopPropagation()}
-              className="bg-white px-8 pb-8 rounded-lg container mx-80"
+              className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 transform transition-all duration-200 scale-100"
             >
-              <div className="flex my-1 justify-end">
-                <div
+              <div className="flex justify-between items-center p-6 border-b">
+                <h2 className="text-2xl font-bold">Add New Question</h2>
+                <button
                   onClick={handleClickModal}
-                  className="w-5 h-5 my-1 flex justify-center items-center rounded hover:bg-gray-100 cursor-pointer"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <i className="text-sm fa-solid fa-xmark"></i>
-                </div>
+                  <HugeiconsIcon icon={Cancel01Icon} className="w-6 h-6" />
+                </button>
               </div>
-              <div className="border-1 rounded-lg grid grid-cols-2">
-                <div className="p-5 grid grid-cols-2 gap-x-8 gap-y-2 border-r">
-                  <div
-                    onClick={() => {
-                      setIsFormQuestion(true);
-                    }}
-                    className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded"
-                  >
-                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
-                      <HugeiconsIcon icon={CursorMagicSelection03Icon} />
-                    </div>
-                    <p className="font-semibold">Nhiều lựa chọn</p>
-                  </div>
-                  <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
-                      <HugeiconsIcon icon={ArtboardToolIcon} />
-                    </div>
-                    <p className="font-semibold">Điền vào chỗ trống</p>
-                  </div>
-                  <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
-                      <HugeiconsIcon icon={TextAlignJustifyCenterIcon} />
-                    </div>
-                    <p className="font-semibold">Đoạn văn</p>
-                  </div>
-                  <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
-                      <HugeiconsIcon icon={Drag04Icon} />
-                    </div>
-                    <p className="font-semibold">Kéo và thả</p>
-                  </div>
-                  <div className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer p-2 rounded">
-                    <div className="bg-darkblue text-background rounded h-8 w-8 flex items-center justify-center">
-                      <HugeiconsIcon icon={ArrowDown01Icon} />
-                    </div>
-                    <p className="font-semibold">Thả xuống</p>
+              <div className="grid grid-cols-2">
+                <div className="p-6 border-r">
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={showFormQuestion}
+                      className="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200 group"
+                    >
+                      <div className="bg-darkblue text-white rounded-lg h-12 w-12 flex items-center justify-center">
+                        <HugeiconsIcon icon={CursorMagicSelection03Icon} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold group-hover:text-darkblue transition-colors">
+                          Multiple Choice
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Create a multiple choice question
+                        </p>
+                      </div>
+                    </button>
+                    <button className="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200 group">
+                      <div className="bg-darkblue text-white rounded-lg h-12 w-12 flex items-center justify-center">
+                        <HugeiconsIcon icon={ArtboardToolIcon} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold group-hover:text-darkblue transition-colors">
+                          Fill in Blank
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Create a fill in the blank question
+                        </p>
+                      </div>
+                    </button>
+                    <button className="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200 group">
+                      <div className="bg-darkblue text-white rounded-lg h-12 w-12 flex items-center justify-center">
+                        <HugeiconsIcon icon={TextAlignJustifyCenterIcon} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold group-hover:text-darkblue transition-colors">
+                          Paragraph
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Create a paragraph question
+                        </p>
+                      </div>
+                    </button>
+                    <button className="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200 group">
+                      <div className="bg-darkblue text-white rounded-lg h-12 w-12 flex items-center justify-center">
+                        <HugeiconsIcon icon={Drag04Icon} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold group-hover:text-darkblue transition-colors">
+                          Drag & Drop
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Create a drag and drop question
+                        </p>
+                      </div>
+                    </button>
+                    <button className="flex items-center gap-3 p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200 group">
+                      <div className="bg-darkblue text-white rounded-lg h-12 w-12 flex items-center justify-center">
+                        <HugeiconsIcon icon={ArrowDown01Icon} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold group-hover:text-darkblue transition-colors">
+                          Dropdown
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Create a dropdown question
+                        </p>
+                      </div>
+                    </button>
                   </div>
                 </div>
-                <div className="bg-darkblue text-background">
-                  <div className="p-8">
-                    <p className="font-semibold mb-2">Thả xuống</p>
-                    <p className="text-sm">
-                      Thả xuống Nâng cấp phần điền vào chỗ trống của bạn thành
-                      các câu hỏi thả xuống dễ dàng để sinh viên có thể chọn từ
-                      danh sách các tùy chọn.
+                <div className="bg-gradient-to-br from-darkblue to-blue-800 text-white p-8">
+                  <h3 className="text-xl font-bold mb-4">Question Types</h3>
+                  <p className="text-blue-100 mb-6">
+                    Choose from different question types to create engaging and
+                    interactive quizzes. Each type offers unique ways to test
+                    knowledge and understanding.
+                  </p>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <p className="text-sm font-medium">Pro Tip</p>
+                    <p className="text-sm text-blue-100">
+                      Mix different question types to keep your quiz interesting
+                      and test various skills.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        ) : null}
-        {isFormQuestion && (
+        )}
+
+        {/* Question Form Modal */}
+        {isFormQuestion && id && (
           <div
-            onClick={() => {
-              setIsFormQuestion(false);
-            }}
-            className="fixed left-0 top-0 right-0 bottom-0 bg-modal flex justify-center items-center"
+            onClick={() => setIsFormQuestion(false)}
+            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
           >
             <div
-              onClick={(e: any) => e.stopPropagation()}
-              className="bg-nude-light p-8 rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 p-6 transform transition-all duration-200 scale-100"
             >
               <MultipleChoices
-                closeFormQuestion={() => {
-                  setIsFormQuestion(false);
-                }}
+                quizId={id}
+                closeFormQuestion={() => setIsFormQuestion(false)}
                 getDataForm={handleGetDataForm}
+                onQuestionCreated={handleQuestionCreated}
               />
             </div>
           </div>
@@ -1095,53 +1879,61 @@ export default function EditQuiz() {
         {showDeleteModal && (
           <div
             onClick={() => setShowDeleteModal(false)}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-background rounded-lg p-6 max-w-md w-full mx-4"
+              className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 transform transition-all duration-200 scale-100"
             >
-              <div className="flex flex-col items-center">
-                <div className="w-16 h-16 bg-orange rounded-full flex items-center justify-center mb-4">
-                  <HugeiconsIcon
-                    icon={Delete01Icon}
-                    size={32}
-                    className="text-white"
-                  />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Xác nhận xóa</h3>
-                <p className="text-dim text-center mb-6">
-                  Bạn có chắc chắn muốn xóa quiz này? Hành động này không thể
-                  hoàn tác.
-                </p>
-                <div className="flex gap-4 w-full">
-                  <button
-                    onClick={() => setShowDeleteModal(false)}
-                    className="flex-1 py-2 px-4 border border-gray-300 rounded btn-hover"
-                    disabled={isDeleting}
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    onClick={handleDeleteQuiz}
-                    disabled={isDeleting}
-                    className="flex-1 py-2 px-4 bg-orange text-darkblue font-semibold rounded btn-hover flex items-center justify-center gap-2"
-                  >
-                    {isDeleting ? (
-                      <>
-                        <span className="loader"></span>
-                        <span>Đang xóa...</span>
-                      </>
-                    ) : (
-                      "Xóa"
-                    )}
-                  </button>
+              <div className="p-6">
+                <div className="flex flex-col items-center">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                    <HugeiconsIcon
+                      icon={Delete01Icon}
+                      size={32}
+                      className="text-red-500"
+                    />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2">Delete Quiz</h3>
+                  <p className="text-gray-600 text-center mb-6">
+                    Are you sure you want to delete this quiz? This action
+                    cannot be undone.
+                  </p>
+                  <div className="flex gap-4 w-full">
+                    <button
+                      onClick={() => setShowDeleteModal(false)}
+                      className="flex-1 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 font-medium"
+                      disabled={isDeleting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteQuiz}
+                      disabled={isDeleting}
+                      className="flex-1 py-2 px-4 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors duration-200 flex items-center justify-center gap-2"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <span className="loader"></span>
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        "Delete Quiz"
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
       </form>
+      <SelectQuizModal
+        isOpen={isSelectQuizModalOpen}
+        onClose={() => setIsSelectQuizModalOpen(false)}
+        onAddQuestions={handleAddQuestionsFromBank}
+        selectedBankIds={selectedBankIds}
+      />
     </div>
   );
 }

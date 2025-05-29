@@ -13,10 +13,11 @@ export const EditQuestionModal = ({
   const [editedQuestion, setEditedQuestion] = useState({
     questionId: "",
     questionText: "",
-    questionType: "multiple-choice",
+    questionType: "multipleChoices",
     timePerQuestion: 30,
-    scorePerQuestion: 10,
+    scorePerQuestion: 1,
     difficulty: "easy",
+    options: [],
     answers: [
       { text: "", isCorrect: false },
       { text: "", isCorrect: false },
@@ -30,6 +31,8 @@ export const EditQuestionModal = ({
     if (question && isOpen) {
       setEditedQuestion({
         ...question,
+        timePerQuestion: Number(question.timePerQuestion || 30),
+        scorePerQuestion: Number(question.scorePerQuestion || 1),
         // Make sure we have at least 4 answers (add empty ones if needed)
         answers: [
           ...question.answers,
@@ -38,6 +41,8 @@ export const EditQuestionModal = ({
             isCorrect: false,
           }),
         ].slice(0, 4), // Limit to 4 answers
+        options:
+          question.answers.map((answer: { text: string }) => answer.text) || [], // Initialize options from answers
       });
     }
   }, [question, isOpen]);
@@ -55,7 +60,10 @@ export const EditQuestionModal = ({
     const { name, value } = e.target;
     setEditedQuestion({
       ...editedQuestion,
-      [name]: value,
+      [name]:
+        name === "timePerQuestion" || name === "scorePerQuestion"
+          ? Number(value)
+          : value,
     });
   };
 
@@ -145,10 +153,16 @@ export const EditQuestionModal = ({
       return;
     }
 
-    // Filter out empty answers
+    // Filter out empty answers and prepare final question data
+    const finalAnswers = editedQuestion.answers.filter((answer) =>
+      answer.text.trim()
+    );
     const finalQuestion = {
       ...editedQuestion,
-      answers: editedQuestion.answers.filter((answer) => answer.text.trim()),
+      answers: finalAnswers,
+      options: finalAnswers.map((answer) => answer.text), // Update options field
+      timePerQuestion: Number(editedQuestion.timePerQuestion),
+      scorePerQuestion: Number(editedQuestion.scorePerQuestion),
     };
 
     // Call the onSave callback with the edited question

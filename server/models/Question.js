@@ -6,10 +6,11 @@ const questionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Quiz",
     },
-    examId: {
+    examSetId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ExamSet",
     },
+    questionImg: { type: String },
     questionText: { type: String, required: true },
     questionType: {
       type: String,

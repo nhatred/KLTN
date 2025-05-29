@@ -6,69 +6,198 @@ import Submission from "../models/Submission.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import QuizSession from "../models/QuizSession.js";
+import ExamSet from "../models/ExamSet.js";
 
 async function createQuiz(req, res) {
   try {
     const userId = req.auth.userId;
-    const quizData = req.body;
+    const {
+      name,
+      topic,
+      difficulty,
+      timePerQuestion,
+      scorePerQuestion,
+      questions = [],
+      questionBankQueries = [],
+    } = req.body;
+    const isPublic = req.body.isPublic === "true";
+    const isExam = req.body.isExam === "true";
+
     const imageFile = req.file;
-
-    // Cần Thêm chức năng giảm kích thước hình ảnh (Ảnh lớn hơn 20mb sẽ lỗi)
+    console.log("ddax vao coon");
+    console.log("quiz info:", {
+      name,
+      topic,
+      difficulty,
+      timePerQuestion,
+      scorePerQuestion,
+      isPublic,
+      questions,
+      questionBankQueries,
+      isExam,
+    });
+    // 1. Kiểm tra ảnh
     if (!imageFile) {
-      return res.json({ success: false, message: "Image Quiz not attached" });
-    }
-    quizData.creator = userId;
-
-    // Parse questionBankQueries từ FormData nếu có
-    if (quizData.questionBankQueries) {
-      try {
-        quizData.questionBankQueries = JSON.parse(quizData.questionBankQueries);
-      } catch (error) {
-        console.log("Error parsing questionBankQueries:", error);
-        return res.json({
-          success: false,
-          message: "Invalid questionBankQueries format",
-        });
-      }
-    }
-
-    try {
-      try {
-        console.log("Uploading image to Cloudinary:", imageFile);
-        const imageUpload = await cloudinary.uploader.upload(imageFile.path);
-
-        // Lấy URL của ảnh từ kết quả upload
-        quizData.imageUrl = imageUpload.secure_url;
-      } catch (cloudinaryError) {
-        console.log("Image Quiz Error: ", cloudinaryError.message);
-        return res.json({
-          success: false,
-          message: "Error uploading image: " + cloudinaryError.message,
-        });
-      }
-
-      console.log("Creating quiz with data:", {
-        ...quizData,
-        questionBankQueries: quizData.questionBankQueries
-          ? `${quizData.questionBankQueries.length} queries`
-          : "none",
-      });
-
-      const newQuiz = await Quiz.create(quizData);
-      res.json({
-        success: true,
-        message: "Quiz Added Success!",
-        _id: newQuiz._id,
-      });
-    } catch (error) {
-      console.log("Error Create New Quiz" + error);
-      return res.json({
+      return res.status(400).json({
         success: false,
-        message: "Error creating quiz: " + error.message,
+        message: "Vui lòng chọn ảnh nền cho quiz",
       });
     }
+    console.log("dungs");
+
+    // 2. Kiểm tra các trường bắt buộc
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu trường name",
+      });
+    }
+    console.log("dungs");
+
+    if (!topic) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu trường topic",
+      });
+    }
+    console.log("dungs");
+
+    // 3. Nếu người dùng có nhập difficulty → validate giá trị
+    if (difficulty && !["easy", "medium", "hard"].includes(difficulty)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nếu nhập difficulty, giá trị phải là 'easy', 'medium' hoặc 'hard'",
+      });
+    }
+
+    console.log("dungs");
+
+    // 3. Parse questionBankQueries nếu là chuỗi JSON (FormData)
+    let parsedQueries = questionBankQueries;
+    if (typeof questionBankQueries === "string") {
+      try {
+        parsedQueries = JSON.parse(questionBankQueries);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: "questionBankQueries không đúng định dạng JSON",
+        });
+      }
+    }
+    console.log("dungs: ", parsedQueries);
+
+    // 4. Nếu là bài thi thì kiểm tra từng query
+    if (isExam) {
+      if (!Array.isArray(parsedQueries) || parsedQueries.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Phải cung cấp questionBankQueries khi isExam = true",
+        });
+      }
+      console.log("ddax vao");
+      for (const { examSetId, difficulty: diff, limit } of parsedQueries) {
+        if (!examSetId || !limit || limit <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Mỗi query cần có examSetId và limit > 0",
+          });
+        }
+        console.log("ddax vao");
+
+        const bank = await ExamSet.findById(examSetId);
+        if (!bank) {
+          return res.status(400).json({
+            success: false,
+            message: `Không tìm thấy ngân hàng câu hỏi có id: ${examSetId}`,
+          });
+        }
+        console.log("ddax vao");
+
+        const filter = { examSetId: new mongoose.Types.ObjectId(examSetId) };
+        if (diff) {
+          if (!["easy", "medium", "hard"].includes(diff)) {
+            console.log(
+              "Difficulty trong query phải là 'easy', 'medium' hoặc 'hard'"
+            );
+            return res.status(400).json({
+              success: false,
+              message:
+                "Difficulty trong query phải là 'easy', 'medium' hoặc 'hard'",
+            });
+          }
+          filter.difficulty = diff;
+        }
+        console.log(filter);
+        console.log("ddax vao");
+
+        const count = await Question.countDocuments(filter);
+        if (count === 0) {
+          console.log(
+            `Không có câu hỏi phù hợp trong ngân hàng "${bank.name}"`
+          );
+          return res.status(400).json({
+            success: false,
+            message: `Không có câu hỏi phù hợp trong ngân hàng "${bank.name}"`,
+          });
+        }
+        console.log("ddax vao");
+
+        if (count < limit) {
+          return res.status(400).json({
+            success: false,
+            message: `Ngân hàng "${bank.name}" chỉ có ${count} câu hỏi (yêu cầu ${limit})`,
+          });
+        }
+      }
+    }
+    console.log("dungs");
+
+    // 5. Upload ảnh
+    let imageUrl = "";
+    try {
+      const result = await cloudinary.uploader.upload(imageFile.path);
+      imageUrl = result.secure_url;
+    } catch (uploadErr) {
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi khi upload ảnh: " + uploadErr.message,
+      });
+    }
+
+    // 6. Tạo quiz
+    const newQuiz = new Quiz({
+      creator: userId,
+      name,
+      topic,
+      difficulty,
+      timePerQuestion,
+      scorePerQuestion,
+      isPublic,
+      imageUrl,
+      isExam,
+      questions: isExam ? [] : questions,
+      questionBankQueries: isExam ? parsedQueries : [],
+    });
+
+    await newQuiz.save();
+
+    // 7. Cập nhật user
+    await User.findByIdAndUpdate(userId, {
+      $push: { createdQuizzes: newQuiz._id },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Quiz được tạo thành công",
+      quiz: newQuiz,
+    });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    console.error("Lỗi khi tạo quiz:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server khi tạo quiz",
+    });
   }
 }
 
@@ -119,24 +248,15 @@ async function updateQuizQuestions(req, res) {
   }
 }
 
+// Lấy tất cả quizz
 async function getUserQuizzes(req, res) {
   try {
     const { userId } = req.params;
-
-    const quizzes = await Quiz.find({ creator: userId });
-
-    // Tùy chọn: Thêm câu hỏi cho mỗi quiz
-    const quizzesWithQuestions = await Promise.all(
-      quizzes.map(async (quiz) => {
-        const questions = await Question.find({ quizId: quiz._id });
-        return {
-          ...quiz.toObject(),
-          questions,
-        };
-      })
-    );
-
-    res.json(quizzesWithQuestions);
+    console.log("đã vào ");
+    const quizzes = await Quiz.find({ creator: userId }).sort({
+      createdAt: -1,
+    });
+    return res.status(200).json({ success: true, quizzes });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -173,11 +293,11 @@ const getQuizById = async (req, res) => {
       const allQuestions = [];
 
       for (const criteria of quiz.questionBankQueries) {
-        const { questionBankId, difficulty, limit } = criteria;
-        console.log(`Fetching questions for bank ${questionBankId}`);
+        const { examSetId, difficulty, limit } = criteria;
+        console.log(`Fetching questions for bank ${examSetId}`);
 
         const filter = {
-          examId: new mongoose.Types.ObjectId(questionBankId.toString()),
+          examId: new mongoose.Types.ObjectId(examSetId.toString()),
         };
         if (Array.isArray(difficulty) && difficulty.length > 0) {
           filter.difficulty = { $in: difficulty };
@@ -255,11 +375,30 @@ async function updateQuiz(req, res) {
       quiz.name = updateData.name;
       quiz.topic = updateData.topic;
       quiz.difficulty = updateData.difficulty;
-      quiz.isPublic = updateData.isPublic || quiz.isPublic;
+      quiz.isPublic = updateData.isPublic === "true";
       quiz.timePerQuestion =
         Number(updateData.timePerQuestion) || quiz.timePerQuestion;
       quiz.scorePerQuestion =
         Number(updateData.scorePerQuestion) || quiz.scorePerQuestion;
+
+      // Handle questionBankQueries if provided
+      if (updateData.questionBankQueries) {
+        try {
+          const parsedQueries =
+            typeof updateData.questionBankQueries === "string"
+              ? JSON.parse(updateData.questionBankQueries)
+              : updateData.questionBankQueries;
+
+          quiz.questionBankQueries = parsedQueries;
+          quiz.isExam = parsedQueries.length > 0;
+        } catch (parseError) {
+          console.error("Error parsing questionBankQueries:", parseError);
+          return res.status(400).json({
+            success: false,
+            message: "Invalid questionBankQueries format",
+          });
+        }
+      }
 
       // Handle image update if a new image is provided
       if (imageFile) {

@@ -3,18 +3,21 @@ import QuizzCard from "../components/QuizzCard";
 import { Quiz } from "../types/Quiz";
 import "../style/quizcard.css";
 import "../style/dashboard.css";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
 import { NavLink } from "react-router";
 import QuizDetailModal from "../components/QuizDetailModal";
-
+import SpinnerLoading from "../components/SpinnerLoading";
 const API_BASE_URL = "http://localhost:5000/api";
 
 export default function Dashboard() {
-  const [quizs, setQuizs] = useState([]);
+  const [quizs, setQuizs] = useState<Quiz[]>([]);
   const [recentQuizzes, setRecentQuizzes] = useState<Quiz[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
+  const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(false);
+  const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   const modalPlay = (quiz: Quiz) => {
     console.log("Quiz clicked:", quiz);
@@ -22,6 +25,16 @@ export default function Dashboard() {
     setSelectedQuiz(quiz);
     console.log(user);
   };
+  useEffect(() => {
+    const fetchToken = async () => {
+      const token = await getToken();
+      console.log("JWT Token:", token); // ← Token có thể dùng để xác thực
+    };
+
+    if (user?.id) {
+      fetchToken(); // Gọi khi đã có user
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     console.log(selectedQuiz);
@@ -29,14 +42,30 @@ export default function Dashboard() {
 
   const fetchAllQuiz = async () => {
     try {
+      setIsLoadingQuizzes(true);
+      console.log("Fetching quizzes from:", `${API_BASE_URL}/quiz/`);
       const response = await fetch(`${API_BASE_URL}/quiz/`);
 
-      if (!response.ok) throw new Error("Failed to fetch quizzes");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        );
+      }
 
       const quizzes = await response.json();
+      console.log("Received quizzes:", quizzes);
+
+      if (!Array.isArray(quizzes)) {
+        throw new Error("Received data is not an array");
+      }
+
       setQuizs(quizzes);
     } catch (error) {
-      console.error("error fetching quizzes: ", error);
+      console.error("Error fetching quizzes:", error);
+      setQuizs([]); // Set empty array on error
+    } finally {
+      setIsLoadingQuizzes(false);
     }
   };
 
@@ -47,6 +76,7 @@ export default function Dashboard() {
     }
 
     try {
+      setIsLoadingRecent(true);
       console.log(`Fetching quiz history for user: ${user.id}`);
       const response = await fetch(`${API_BASE_URL}/quiz/history/${user.id}`);
 
@@ -59,11 +89,9 @@ export default function Dashboard() {
       console.log("Received quiz history data:", data);
 
       if (data.success && data.data) {
-        // Lấy danh sách quiz từ lịch sử tham gia
         const quizzes = data.data.map((history: any) => history.quiz as Quiz);
         console.log("Processed quizzes:", quizzes);
 
-        // Loại bỏ các quiz trùng lặp và giới hạn 6 quiz gần nhất
         const uniqueQuizzes = Array.from(
           new Map(quizzes.map((quiz: Quiz) => [quiz._id, quiz])).values()
         ).slice(0, 6) as Quiz[];
@@ -77,6 +105,8 @@ export default function Dashboard() {
     } catch (error) {
       console.error("Error fetching recent quizzes:", error);
       setRecentQuizzes([]);
+    } finally {
+      setIsLoadingRecent(false);
     }
   };
 
@@ -87,9 +117,9 @@ export default function Dashboard() {
     }
   }, [user?.id]);
 
-  const filteredQuizzes = quizs.filter(
-    (quiz: any) => quiz.isPublic === "public"
-  );
+  const filteredQuizzes = quizs.filter((quiz: Quiz) => quiz.isPublic === true);
+
+  console.log("Filtered quizzes:", filteredQuizzes);
 
   return (
     <div className="pt-16">
@@ -128,32 +158,39 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="mb-20">
-        <div className="flex justify-between mb-5">
-          <h1 className="text-2xl mb-5">Hoạt động gần đây</h1>
-          <NavLink
-            to="/dashboard/my-quiz/hosted-quizzes"
-            className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full"
-          >
-            <p className="px-5 py-1">Xem thêm</p>
-          </NavLink>
+      {isLoadingRecent ? (
+        <div className="mb-20">
+          <div className="flex justify-between mb-5">
+            <h1 className="text-2xl mb-5">Hoạt động gần đây</h1>
+          </div>
+          <div className="bg-white rounded-xl box-shadow p-12">
+            <SpinnerLoading />
+          </div>
         </div>
-        <div className="grid grid-cols-4 gap-5">
-          {recentQuizzes.length > 0 ? (
-            recentQuizzes.map((quiz: Quiz) => (
-              <QuizzCard
-                key={quiz._id}
-                quiz={quiz}
-                handleCardClick={() => modalPlay(quiz)}
-              />
-            ))
-          ) : (
-            <p className="col-span-4 text-center text-gray-500">
-              Chưa có hoạt động nào gần đây
-            </p>
-          )}
-        </div>
-      </div>
+      ) : (
+        recentQuizzes.length > 0 && (
+          <div className="mb-20">
+            <div className="flex justify-between mb-5">
+              <h1 className="text-2xl mb-5">Hoạt động gần đây</h1>
+              <NavLink
+                to="/dashboard/my-quiz/hosted-quizzes"
+                className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full"
+              >
+                <p className="px-5 py-1">Xem thêm</p>
+              </NavLink>
+            </div>
+            <div className="grid grid-cols-4 gap-5">
+              {recentQuizzes.map((quiz: Quiz) => (
+                <QuizzCard
+                  key={quiz._id}
+                  quiz={quiz}
+                  handleCardClick={() => modalPlay(quiz)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      )}
 
       <div>
         <div className="flex justify-between mb-5">
@@ -162,15 +199,28 @@ export default function Dashboard() {
             <p className="px-5 py-1">Xem thêm</p>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-5">
-          {filteredQuizzes.map((quiz: Quiz) => (
-            <QuizzCard
-              key={quiz._id}
-              quiz={quiz}
-              handleCardClick={() => modalPlay(quiz)}
-            />
-          ))}
-        </div>
+        {isLoadingQuizzes ? (
+          <div className="bg-white rounded-xl box-shadow p-12">
+            <SpinnerLoading />
+          </div>
+        ) : filteredQuizzes.length === 0 ? (
+          <div className="bg-white rounded-xl box-shadow p-12 text-center">
+            <p>Không có quiz nào</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-5">
+            {filteredQuizzes.map((quiz: Quiz) => {
+              console.log("Rendering quiz:", quiz);
+              return (
+                <QuizzCard
+                  key={quiz._id}
+                  quiz={quiz}
+                  handleCardClick={() => modalPlay(quiz)}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
       {isModalOpen && selectedQuiz && (
         <QuizDetailModal

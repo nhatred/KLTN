@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+// import { type } from "os";
 
 const userSchema = new mongoose.Schema(
   {
@@ -37,6 +38,7 @@ const userSchema = new mongoose.Schema(
         ref: "Participant",
       },
     ],
+    // role: { type: String,  enum:["admin", "teacher", "student"], require: true }
   },
   {
     timestamps: true,

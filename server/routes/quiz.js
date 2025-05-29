@@ -14,9 +14,18 @@ import {
   getQuizSession,
   completeQuizSession
 } from "../controllers/quizController.js";
-import { protectCreator, checkQuizOwnership } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
+// Tạo quizz 
+router.post("/", upload.single("imageUrl"), createQuiz);
+// Lấy tất cả các quizz của user
+router.get("/user/:userId", getUserQuizzes);
+
+
+
+
+
+
 
 // Quiz session management routes - must be before parameterized routes
 router.post("/session/complete", completeQuizSession);
@@ -27,16 +36,15 @@ router.get("/session", getQuizSession);
 router.post("/results", saveQuizResults);
 
 // Create a new quiz
-router.post("/", upload.single("imageUrl"), protectCreator, createQuiz);
+
 router.get("/", getAllQuiz);
 
 // User specific routes
-router.get("/user/:userId", getUserQuizzes);
 router.get("/history/:userId", getUserQuizHistory);
 
 // Quiz management routes
 router.get("/:id", getQuizById);
-router.patch("/:quizId/questions", protectCreator, updateQuizQuestions);
+router.patch("/:quizId/questions", updateQuizQuestions);
 router.put(
   "/:id",
   upload.single("imageUrl"),
@@ -45,9 +53,8 @@ router.put(
     console.log("File upload processed:", req.file);
     next();
   },
-  protectCreator,
   updateQuiz
 );
-router.delete("/:id", protectCreator, deleteQuiz);
+router.delete("/:id", deleteQuiz);
 
 export default router;

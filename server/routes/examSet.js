@@ -1,6 +1,6 @@
 import express from "express";
 import {
-  getAllExamSets,
+  getAllExamSetsByUser,
   getExamSetById,
   createExamSet,
   updateExamSet,
@@ -11,23 +11,22 @@ import { verifyToken } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-// Tất cả các routes đều yêu cầu xác thực
 router.use(verifyToken);
 
-// Lấy tất cả bộ đề
-router.get("/", getAllExamSets);
-
-// Lấy một bộ đề theo ID
-router.get("/:id", getExamSetById);
 
 // Tạo bộ đề mới
 router.post("/", createExamSet);
-
+// Xóa bộ đề
+router.delete("/:id", deleteExamSet);
+// Lấy tất cả bộ đề cảu user
+router.get("/", getAllExamSetsByUser);
+// Lấy một bộ đề theo ID
+router.get("/:id", getExamSetById);
 // Cập nhật bộ đề
 router.put("/:id", updateExamSet);
 
-// Xóa bộ đề
-router.delete("/:id", deleteExamSet);
+
+
 
 // Tạo đề thi tự động
 router.post("/:id/generate", generateExam);

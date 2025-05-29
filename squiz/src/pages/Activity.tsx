@@ -13,6 +13,9 @@ import {
   CheckmarkCircle02Icon,
   Cancel01Icon,
   BookOpenIcon,
+  ChampionIcon,
+  Calendar03Icon,
+  Clock01Icon,
 } from "@hugeicons/core-free-icons";
 import { NavLink } from "react-router";
 import "../style/quizcard.css";
@@ -360,93 +363,157 @@ export default function Activity() {
 
       {/* Exam Results */}
       {activeTab === "exam" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {quizRoomResults.length > 0 ? (
             quizRoomResults.map((result) => (
-              <div
-                key={result.participationId}
-                onClick={() => handleExamClick(result)}
-                className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50 hover:border-orange/50 transition-all duration-300 cursor-pointer"
-              >
-                {/* Quiz Room Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-orange mb-2">
-                      {result.quizRoom.quiz.name}
-                    </h3>
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                        {result.quizRoom.quiz.topic}
-                      </span>
-                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                        {result.quizRoom.quiz.difficulty}
-                      </span>
-                      <span className="px-2 py-1 bg-gray-700/50 rounded-full">
-                        Mã phòng: {result.quizRoom.roomCode}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-orange">
-                      {result.score}/{result.stats.totalQuestions}
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      {new Date(result.joinedAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
+              <div style={{ backgroundColor: "#fcfbfa" }}>
+                <div
+                  key={result.participationId}
+                  onClick={() => handleExamClick(result)}
+                  className="group relative bg-white rounded-2xl p-5 border border-gray-200 hover:border-red-300 transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-red-100/50 hover:-translate-y-1"
+                >
+                  {/* Header Section */}
+                  <div className="flex items-start justify-between mb-6">
+                    <div className="flex-1 pr-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                          <HugeiconsIcon
+                            icon={ChampionIcon}
+                            size={18}
+                            className="text-orange"
+                          />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800 group-hover:text-orange transition-colors duration-300">
+                          {result.quizRoom.quiz.name}
+                        </h3>
+                      </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="bg-gray-700/30 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                      <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />
-                      <span>Đúng</span>
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium border border-gray-200">
+                          <HugeiconsIcon
+                            icon={BookOpenIcon}
+                            size={14}
+                            className="inline mr-1"
+                          />
+                          {result.quizRoom.quiz.topic}
+                        </span>
+                        <span
+                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold border`}
+                        >
+                          {result.quizRoom.quiz.difficulty}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-lg font-semibold text-green-400">
-                      {result.stats.correctAnswers}
-                    </div>
-                  </div>
-                  <div className="bg-gray-700/30 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                      <HugeiconsIcon icon={Cancel01Icon} size={16} />
-                      <span>Sai</span>
-                    </div>
-                    <div className="text-lg font-semibold text-red-400">
-                      {result.stats.incorrectAnswers}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Progress Bar */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-gray-400 mb-1">
-                    <span>Tỷ lệ đúng</span>
-                    <span>{result.stats.correctPercentage}%</span>
+                    <div className="text-right">
+                      <div className={`text-3xl font-bold mb-1`}>
+                        {result.score}
+                        <span className="text-gray-400 text-xl">
+                          /{result.stats.totalQuestions}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-gray-500">
+                        <HugeiconsIcon icon={Calendar03Icon} size={14} />
+                        <span>
+                          {new Date(result.joinedAt).toLocaleDateString(
+                            "vi-VN"
+                          )}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-orange to-red-500 transition-all duration-500"
-                      style={{ width: `${result.stats.correctPercentage}%` }}
-                    />
-                  </div>
-                </div>
 
-                {/* Additional Info */}
-                <div className="flex items-center justify-between text-sm text-gray-400">
-                  <div className="flex items-center gap-1">
-                    <HugeiconsIcon icon={ClockIcon} size={16} />
-                    <span>
-                      {Math.floor(result.stats.timeSpent / 60)} phút{" "}
-                      {result.stats.timeSpent % 60} giây
-                    </span>
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 group-hover:bg-green-100/50 transition-all duration-300">
+                      <div className="flex items-center gap-2 text-sm text-green-700 mb-2 font-medium">
+                        <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} />
+                        <span>Đúng</span>
+                      </div>
+                      <div className="text-2xl font-bold text-green-600">
+                        {result.stats.correctAnswers}
+                      </div>
+                    </div>
+
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 group-hover:bg-red-100/50 transition-all duration-300">
+                      <div className="flex items-center gap-2 text-sm text-red-700 mb-2 font-medium">
+                        <HugeiconsIcon icon={Cancel01Icon} size={16} />
+                        <span>Sai</span>
+                      </div>
+                      <div className="text-2xl font-bold text-red-600">
+                        {result.stats.incorrectAnswers}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <HugeiconsIcon icon={Chart02Icon} size={16} />
-                    <span>
-                      Thời gian: {result.quizRoom.durationMinutes} phút
-                    </span>
+
+                  {/* Progress Section */}
+                  <div className="mb-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-sm font-semibold text-gray-600">
+                        Tỷ lệ đúng
+                      </span>
+                      <span className={`text-lg font-bold`}>
+                        {result.stats.correctPercentage}%
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                        <div
+                          className="h-full bg-gradient-to-r from-red-400 to-red-500 transition-all duration-1000 ease-out rounded-full relative"
+                          style={{
+                            width: `${result.stats.correctPercentage}%`,
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-white/20 rounded-full" />
+                        </div>
+                      </div>
+
+                      {/* Progress indicator */}
+                      {result.stats.correctPercentage > 5 && (
+                        <div
+                          className="absolute -top-1 w-1 h-5 bg-orange rounded-full shadow-md transition-all duration-1000"
+                          style={{
+                            left: `${result.stats.correctPercentage}%`,
+                            transform: "translateX(-50%)",
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
+
+                  {/* Footer Info */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                        <HugeiconsIcon
+                          icon={Clock01Icon}
+                          size={12}
+                          className="text-blue-600"
+                        />
+                      </div>
+                      <span className="font-medium">
+                        Hoàn thành: {Math.floor(result.stats.timeSpent / 60)}{" "}
+                        phút {result.stats.timeSpent % 60} giây
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                        <HugeiconsIcon
+                          icon={Chart02Icon}
+                          size={12}
+                          className="text-purple-600"
+                        />
+                      </div>
+                      <span className="font-medium">
+                        Thời hạn: {result.quizRoom.durationMinutes} phút
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Hover Effect Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-red-50/0 to-red-50/30 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                 </div>
               </div>
             ))

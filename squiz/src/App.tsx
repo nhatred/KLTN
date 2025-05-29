@@ -40,8 +40,10 @@ function App() {
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />
           <Route path="/create-room/:id" element={<CreateRoom />} />
           <Route path="/join-room/:id" element={<JoinRoom />} />
-          <Route path="/join-room/code/:code" element={<JoinRoomForStudent />} />
-          
+          <Route
+            path="/join-room/code/:code"
+            element={<JoinRoomForStudent />}
+          />
         </Routes>
       </QuizProvider>
     </BrowserRouter>
