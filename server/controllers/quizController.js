@@ -248,17 +248,96 @@ async function updateQuizQuestions(req, res) {
   }
 }
 
-// Lấy tất cả quizz
 async function getUserQuizzes(req, res) {
   try {
     const { userId } = req.params;
-    console.log("đã vào ");
-    const quizzes = await Quiz.find({ creator: userId }).sort({
-      createdAt: -1,
+
+    const quizzes = await Quiz.find({
+      creator: userId,
+      isExam: false,
+    }).populate({
+      path: "creator",
+      model: "User",
+      select: "name imageUrl",
     });
-    return res.status(200).json({ success: true, quizzes });
+
+    // Tùy chọn: Thêm câu hỏi cho mỗi quiz
+    const quizzesWithQuestions = await Promise.all(
+      quizzes.map(async (quiz) => {
+        const questions = await Question.find({ quizId: quiz._id });
+        const quizObj = quiz.toObject();
+
+        // Format creator info
+        if (quizObj.creator) {
+          quizObj.creatorInfo = {
+            name: quizObj.creator.name || "Unknown User",
+            avatar: quizObj.creator.imageUrl || "",
+          };
+        }
+
+        return {
+          ...quizObj,
+          questions,
+        };
+      })
+    );
+
+    res.json(quizzesWithQuestions);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+}
+
+async function getUserExams(req, res) {
+  try {
+    const { userId } = req.params;
+
+    const exams = await Quiz.find({
+      creator: userId,
+      isExam: true,
+    }).populate({
+      path: "creator",
+      model: "User",
+      select: "name imageUrl",
+    });
+
+    const examsWithDetails = await Promise.all(
+      exams.map(async (exam) => {
+        const questions = await Question.find({ quizId: exam._id });
+        const examObj = exam.toObject();
+
+        // Format creator info
+        if (examObj.creator) {
+          examObj.creatorInfo = {
+            name: examObj.creator.name || "Unknown User",
+            avatar: examObj.creator.imageUrl || "",
+          };
+        }
+
+        // Tính số người đã làm bài thi này
+        const participantCount = await Participant.countDocuments({
+          quiz: exam._id,
+          isLoggedIn: true,
+        });
+
+        return {
+          ...examObj,
+          questions,
+          participantCount,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: examsWithDetails,
+    });
+  } catch (error) {
+    console.error("Error fetching user exams:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 }
 
@@ -271,6 +350,7 @@ const getQuizById = async (req, res) => {
 
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
+    // Nếu là bài thi và có questionBankQueries, tạo bộ câu hỏi ngẫu nhiên
     // Kiểm tra xem người dùng đã tham gia phòng chưa
     const participant = await Participant.findOne({
       quizRoom: quiz._id,
@@ -288,19 +368,17 @@ const getQuizById = async (req, res) => {
       quiz.questionBankQueries &&
       quiz.questionBankQueries.length > 0
     ) {
-      // Nếu chưa tham gia và có questionBankQueries, tạo bộ câu hỏi mới
-      console.log("Generating new questions from question bank");
+      console.log("Generating random questions from question bank");
       const allQuestions = [];
 
       for (const criteria of quiz.questionBankQueries) {
         const { examSetId, difficulty, limit } = criteria;
         console.log(`Fetching questions for bank ${examSetId}`);
 
-        const filter = {
-          examId: new mongoose.Types.ObjectId(examSetId.toString()),
-        };
-        if (Array.isArray(difficulty) && difficulty.length > 0) {
-          filter.difficulty = { $in: difficulty };
+        // Tạo filter để lấy câu hỏi theo điều kiện
+        const filter = { examSetId: new mongoose.Types.ObjectId(examSetId) };
+        if (difficulty) {
+          filter.difficulty = difficulty;
         }
 
         const matched = await Question.find(filter);
@@ -311,9 +389,9 @@ const getQuizById = async (req, res) => {
         allQuestions.push(...selected);
       }
 
-      // Trộn tất cả câu hỏi
+      // Trộn tất cả câu hỏi đã chọn
       quiz.questions = allQuestions.sort(() => 0.5 - Math.random());
-      console.log(`Generated ${quiz.questions.length} new questions`);
+      console.log(`Generated ${quiz.questions.length} random questions`);
     }
 
     res.json({
@@ -1031,6 +1109,7 @@ export {
   getAllQuiz,
   updateQuizQuestions,
   getUserQuizzes,
+  getUserExams,
   updateQuiz,
   deleteQuiz,
   saveQuizResults,

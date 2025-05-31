@@ -3,7 +3,6 @@ import Home from "./Home";
 import Dashboard from "./Dashboard";
 import Activity from "./Activity";
 import MainLayout from "../layout/MainLayout";
-import CreateQuiz from "./CreateQuiz";
 import MyQuiz from "./MyQuiz";
 import CreatedByMe from "../components/CreatedByMe";
 import HostedQuizzes from "../components/HostedQuizzes";
@@ -15,6 +14,7 @@ import JoinRoom from "./JoinRoom";
 import RoomManager from "./RoomManager";
 import JoinRoomForStudent from "./JoinRoomForStudent";
 import ExamBank from "./ExamBank";
+import ExamCreatedByMe from "../components/ExamCreatedByMe";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -49,8 +49,8 @@ const router = createBrowserRouter([
     Component: LikedQuizzes,
   },
   {
-    path: "/create-quiz",
-    Component: CreateQuiz,
+    path: "/exam-created-by-me",
+    Component: ExamCreatedByMe,
   },
   {
     path: "/edit-quiz/:id",

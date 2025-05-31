@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { Quiz } from "../types/Quiz";
-import { NavLink, useOutletContext } from "react-router";
+import { NavLink } from "react-router";
 import { useUser } from "@clerk/clerk-react";
 import QuizzCard from "./QuizzCard";
 import SpinnerLoading from "../components/SpinnerLoading";
 
 export default function CreatedByMe() {
   const { user } = useUser();
-  const { setCreatedByMeCount } = useOutletContext<{
-    setCreatedByMeCount: (count: number) => void;
-  }>();
   const [quizs, setQuizs] = useState<Quiz[]>([]);
   const [filter, setFilter] = useState<"public" | "private">("public");
   const [loading, setLoading] = useState(true);
@@ -21,24 +18,19 @@ export default function CreatedByMe() {
       const response = await fetch(
         `http://localhost:5000/api/quiz/user/${user?.id}`
       );
+
       if (!response.ok) {
         throw new Error("Failed to fetch user quizzes");
       }
 
-      const data = await response.json();
-      console.log("allQuizzes: ", data);
-
-      const allQuizzes: Quiz[] = data.quizzes; // ✅ lấy mảng từ field 'quizzes'
-      const regularQuizzes = allQuizzes; // ✅ lọc bình thường
-
-      setQuizs(regularQuizzes);
+      const quizzes = await response.json();
+      setQuizs(quizzes);
     } catch (error) {
       console.error("Error fetching user quizzes:", error);
     } finally {
       setLoading(false);
     }
   };
-
 
   useEffect(() => {
     if (user) {
@@ -48,18 +40,15 @@ export default function CreatedByMe() {
 
   // Filter quizzes by public/private
   const filteredQuizzes = quizs.filter((quiz: Quiz) =>
-  filter === "public" ? quiz.isPublic === true : quiz.isPublic === false
-);
-
+    filter === "public" ? quiz.isPublic === true : quiz.isPublic === false
+  );
 
   // Update total count of regular quizzes (excluding exams)
-  useEffect(() => {
-    setCreatedByMeCount(quizs.length);
-  }, [quizs, setCreatedByMeCount]);
-
   // Calculate counts for public and private quizzes
   const publicQuizCount = quizs.filter((quiz) => quiz.isPublic === true).length;
-  const privateQuizCount = quizs.filter((quiz) => quiz.isPublic === false).length;
+  const privateQuizCount = quizs.filter(
+    (quiz) => quiz.isPublic === false
+  ).length;
 
   return (
     <div>
@@ -121,4 +110,3 @@ export default function CreatedByMe() {
     </div>
   );
 }
-

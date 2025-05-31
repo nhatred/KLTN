@@ -124,6 +124,8 @@ export default function EditQuiz() {
     isPublic: true,
     questions: [{}],
     imageUrl: null,
+    questionBankQueries: [],
+    isExam: false,
   });
   const [questions, setQuestions] = useState<Question[]>([]);
   const [imageData, setImageData] = useState<File | null>(null);
@@ -158,6 +160,12 @@ export default function EditQuiz() {
   useEffect(() => {
     setIsExam(selectedQuestionBanks.length > 0);
   }, [selectedQuestionBanks]);
+
+  if (isSelectQuizModalOpen) {
+    document.body.style.overflow = "hidden";
+  } else {
+    document.body.style.overflow = "auto";
+  }
 
   useEffect(() => {
     setQuestions((prevQuestions) =>
@@ -213,6 +221,8 @@ export default function EditQuiz() {
         imageUrl: quizData.imageUrl || null,
         timePerQuestion: Number(quizData.timePerQuestion || 30),
         scorePerQuestion: Number(quizData.scorePerQuestion || 1),
+        questionBankQueries: quizData.questionBankQueries || [],
+        isExam: quizData.isExam || false,
       };
 
       // Update quiz options with default values from quiz
@@ -910,8 +920,14 @@ export default function EditQuiz() {
       const quizData = await quizResponse.json();
       const existingQueries = quizData.data.questionBankQueries || [];
 
+      // Add examName to each query before saving
+      const queriesWithNames = questionBankQueries.map((query) => ({
+        ...query,
+        examName,
+      }));
+
       // Combine existing and new queries
-      const updatedQueries = [...existingQueries, ...questionBankQueries];
+      const updatedQueries = [...existingQueries, ...queriesWithNames];
 
       // Update quiz with combined question bank queries
       const formData = new FormData();
@@ -920,19 +936,10 @@ export default function EditQuiz() {
       formData.append("topic", quizData.data.topic);
       formData.append("difficulty", quizData.data.difficulty);
       formData.append("isPublic", quizData.data.isPublic);
-      formData.append("isExam", "true");
+      formData.append("isExam", "true"); // Always set isExam to true when adding from question bank
       formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
       formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
-
-      // Add examName to each query before saving
-      const queriesWithNames = questionBankQueries.map((query) => ({
-        ...query,
-        examName,
-      }));
-      formData.append(
-        "questionBankQueries",
-        JSON.stringify([...existingQueries, ...queriesWithNames])
-      );
+      formData.append("questionBankQueries", JSON.stringify(updatedQueries));
 
       // Nếu có ảnh hiện tại, thêm vào formData
       if (imageData) {
@@ -985,12 +992,15 @@ export default function EditQuiz() {
       // Update local state with new quiz data
       setQuizData({
         ...quizData.data,
-        questionBankQueries: [...existingQueries, ...queriesWithNames],
+        questionBankQueries: updatedQueries,
         isExam: true,
       });
 
       // Set isExam to true since we now have question banks
       setIsExam(true);
+
+      // Show success message
+      alert("Đã thêm câu hỏi từ ngân hàng đề thành công!");
     } catch (error) {
       console.error("Error adding questions from bank:", error);
       alert("Failed to add questions from bank. Please try again.");
@@ -1122,46 +1132,6 @@ export default function EditQuiz() {
     fetchQuestionBanks();
   }, [id, getToken]);
 
-  const handleSaveQuizz = async () => {
-    try {
-      setIsSaving(true);
-      const token = await getToken();
-      if (!token) throw new Error("Authentication required");
-
-      const formData = new FormData();
-      formData.append("creator", userId || "");
-      formData.append("name", quizData.name);
-      formData.append("topic", quizData.topic);
-      formData.append("difficulty", quizData.difficulty);
-      formData.append("isPublic", String(quizData.isPublic));
-      if (imageData) {
-        formData.append("imageUrl", imageData);
-      }
-      formData.append("timePerQuestion", String(quizOptions.timePerQuestion));
-      formData.append("scorePerQuestion", String(quizOptions.scorePerQuestion));
-
-      const response = await fetch(`${API_BASE_URL}/quiz/${id}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      const quizResult = await response.json();
-      if (quizResult.success) {
-        setActiveNewQuestion(false);
-      } else {
-        throw new Error(quizResult.message || "Cannot update Quiz");
-      }
-    } catch (error) {
-      console.error("Error saving quiz:", error);
-      alert("Failed to save quiz. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleApplyToAll = async () => {
     try {
       const token = await getToken();
@@ -1237,7 +1207,7 @@ export default function EditQuiz() {
       <div className="flex justify-center items-center h-screen">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-          <div className="text-xl">Loading quiz...</div>
+          <div className="text-xl">Đang tải quiz...</div>
         </div>
       </div>
     );
@@ -1292,10 +1262,10 @@ export default function EditQuiz() {
             <button
               type="button"
               onClick={() => setShowDeleteModal(true)}
-              className="flex items-center gap-2 px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition-colors duration-200"
+              className="flex items-center gap-2 px-4 py-3 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition-colors duration-200"
             >
               <HugeiconsIcon icon={Delete01Icon} size={20} />
-              <span className="font-medium">Delete Quiz</span>
+              <span className="font-medium">Xóa quiz</span>
             </button>
             <button
               onClick={handleSubmit(handleSaveQuiz)}
@@ -1306,12 +1276,12 @@ export default function EditQuiz() {
                 {isSaving ? (
                   <div className="flex items-center gap-2">
                     <span className="loader"></span>
-                    <p className="pl-1">Updating Quiz...</p>
+                    <p className="pl-1">Đang cập nhật quiz...</p>
                   </div>
                 ) : (
                   <>
                     <i className="fa-solid fa-floppy-disk mr-2"></i>
-                    <p>Save Quiz</p>
+                    <p>Lưu quiz</p>
                   </>
                 )}
               </div>
@@ -1319,7 +1289,7 @@ export default function EditQuiz() {
           </div>
         </nav>
 
-        <main className="pt-28 grid grid-cols-8 gap-8">
+        <main className="pt-28 pb-20 grid grid-cols-8 gap-8">
           {/* Sidebar */}
           <Quizbar
             quizOptions={quizOptions}
@@ -1331,7 +1301,7 @@ export default function EditQuiz() {
           <div className="col-span-5">
             {/* Quiz Information */}
             <div className="w-full px-8 py-6 bg-white rounded-xl col-span-5 shadow-md hover:shadow-lg transition-shadow duration-200">
-              <p className="text-xl font-semibold mb-6">Quiz Information</p>
+              <p className="text-xl font-semibold mb-6">Thông tin quiz</p>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <input
                   {...register("name", {
@@ -1340,7 +1310,7 @@ export default function EditQuiz() {
                   type="text"
                   value={quizData.name}
                   onChange={handleQuizDataChange}
-                  placeholder="Enter Quiz name"
+                  placeholder="Nhập tên quiz"
                   className={`border p-3 text-sm font-medium rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200
                   ${errors.name ? "border-red-500" : "border-gray-300"}`}
                 />
@@ -1355,12 +1325,12 @@ export default function EditQuiz() {
                   className={`bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200
                   ${errors.topic ? "border-red-500" : "border-gray-300"}`}
                 >
-                  <option value="">Select Topic</option>
-                  <option value="math">Mathematics</option>
-                  <option value="english">English</option>
-                  <option value="physics">Physics</option>
-                  <option value="history">History</option>
-                  <option value="other">Other</option>
+                  <option value="">Chọn chủ đề</option>
+                  <option value="math">Toán học</option>
+                  <option value="english">Tiếng Anh</option>
+                  <option value="physics">Vật lý</option>
+                  <option value="history">Lịch sử</option>
+                  <option value="other">Khác</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-6">
@@ -1375,7 +1345,7 @@ export default function EditQuiz() {
                   className={`bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200
                   ${errors.difficulty ? "border-red-500" : "border-gray-300"}`}
                 >
-                  <option value="">Select Difficulty</option>
+                  <option value="">Chọn độ khó</option>
                   {DIFFICULTY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -1390,8 +1360,8 @@ export default function EditQuiz() {
                   onChange={handleQuizDataChange}
                   className="bg-white border outline-none text-sm rounded-lg block w-full p-3 font-medium focus:ring-2 focus:ring-orange/30 transition-all duration-200 border-gray-300"
                 >
-                  <option value="true">Public</option>
-                  <option value="false">Private</option>
+                  <option value="true">Công khai</option>
+                  <option value="false">Riêng tư</option>
                 </select>
               </div>
               <div className="relative">
@@ -1421,9 +1391,7 @@ export default function EditQuiz() {
                     className="text-gray-500"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    {isUploading
-                      ? "Uploading image..."
-                      : "Upload Quiz background image"}
+                    {isUploading ? "Đang tải ảnh..." : "Tải ảnh nền quiz"}
                   </span>
                 </label>
               </div>
@@ -1435,7 +1403,7 @@ export default function EditQuiz() {
               {isUploading && (
                 <div className="flex items-center gap-2 mt-2">
                   <span className="loader"></span>
-                  <p className="text-sm text-gray-600">Processing image...</p>
+                  <p className="text-sm text-gray-600">Đang xử lý ảnh...</p>
                 </div>
               )}
               <div className="mt-4">
@@ -1459,7 +1427,7 @@ export default function EditQuiz() {
             <div>
               <div className="flex justify-between mt-8 mb-6">
                 <p className="text-xl font-semibold">
-                  {questions.length} Questions ({totalScoreOfQuiz()} points)
+                  {questions.length} câu hỏi ({totalScoreOfQuiz()} điểm)
                 </p>
                 <div className="flex gap-3">
                   {!questions.length && (
@@ -1469,7 +1437,7 @@ export default function EditQuiz() {
                     >
                       <i className="fa-solid fa-plus"></i>
                       <span className="font-medium">
-                        Thêm câu hỏi từ ngân hàng đề
+                        Thêm câu hỏi từ ngân hàng đề thi
                       </span>
                     </button>
                   )}
@@ -1488,7 +1456,7 @@ export default function EditQuiz() {
               {selectedQuestionBanks.length > 0 && (
                 <div className="mt-8 space-y-4">
                   <p className="text-xl font-semibold mb-4">
-                    Selected Question Banks
+                    Ngân hàng đề thi đã chọn
                   </p>
                   {selectedQuestionBanks.map((bank) => (
                     <div
@@ -1515,16 +1483,16 @@ export default function EditQuiz() {
                             className="bg-gray-50 p-3 rounded-lg"
                           >
                             <span className="text-sm font-medium text-gray-700">
-                              {section.difficulty === "e"
-                                ? "Easy"
-                                : section.difficulty === "m"
-                                ? "Medium"
-                                : "Hard"}
+                              {section.difficulty === "easy"
+                                ? "Dễ"
+                                : section.difficulty === "medium"
+                                ? "Trung bình"
+                                : "Khó"}
                             </span>
                             <p className="text-2xl font-semibold mt-1">
                               {section.numberOfQuestions}
                               <span className="text-sm font-normal text-gray-500 ml-1">
-                                questions
+                                câu hỏi
                               </span>
                             </p>
                           </div>
@@ -1538,8 +1506,8 @@ export default function EditQuiz() {
               {questions.length === 0 && selectedQuestionBanks.length === 0 && (
                 <div className="flex justify-center p-4 my-4 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-red-500 text-sm font-medium">
-                    Please add at least one question or select from question
-                    bank
+                    Vui lòng thêm ít nhất một câu hỏi hoặc chọn từ ngân hàng đề
+                    thi
                   </p>
                 </div>
               )}
@@ -1610,7 +1578,7 @@ export default function EditQuiz() {
                                 key={`score-${score}-${questionId}`}
                                 value={score}
                               >
-                                {score} points
+                                {score} điểm
                               </option>
                             ))}
                           </select>
@@ -1658,7 +1626,7 @@ export default function EditQuiz() {
                               className="group-hover:text-orange"
                             />
                             <span className="text-sm font-medium group-hover:text-orange">
-                              Edit
+                              Sửa
                             </span>
                           </button>
                           <button
@@ -1680,7 +1648,7 @@ export default function EditQuiz() {
                       <div className="mt-6">
                         <p className="text-gray-800">{question.questionText}</p>
                         <p className="text-sm font-medium text-gray-600 mt-6 mb-3">
-                          Answers
+                          Câu trả lời
                         </p>
                         <div className="grid grid-cols-2 gap-4">
                           {question.answers.map((answer, answerIndex) => (
@@ -1724,7 +1692,7 @@ export default function EditQuiz() {
                     className="flex items-center gap-2 px-6 py-3 bg-darkblue text-white rounded-lg hover:bg-darkblue/90 transition-colors duration-200"
                   >
                     <i className="fa-solid fa-plus"></i>
-                    <span className="font-medium">New Question</span>
+                    <span className="font-medium">Thêm câu hỏi</span>
                   </button>
                 </div>
               )}
@@ -1743,7 +1711,7 @@ export default function EditQuiz() {
               className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 transform transition-all duration-200 scale-100"
             >
               <div className="flex justify-between items-center p-6 border-b">
-                <h2 className="text-2xl font-bold">Add New Question</h2>
+                <h2 className="text-2xl font-bold">Thêm câu hỏi mới</h2>
                 <button
                   onClick={handleClickModal}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1763,10 +1731,10 @@ export default function EditQuiz() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold group-hover:text-darkblue transition-colors">
-                          Multiple Choice
+                          Câu hỏi đa lựa chọn
                         </p>
                         <p className="text-sm text-gray-500">
-                          Create a multiple choice question
+                          Tạo một câu hỏi đa lựa chọn
                         </p>
                       </div>
                     </button>
@@ -1776,10 +1744,10 @@ export default function EditQuiz() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold group-hover:text-darkblue transition-colors">
-                          Fill in Blank
+                          Điền vào chỗ trống
                         </p>
                         <p className="text-sm text-gray-500">
-                          Create a fill in the blank question
+                          Tạo một câu hỏi điền vào chỗ trống
                         </p>
                       </div>
                     </button>
@@ -1792,7 +1760,7 @@ export default function EditQuiz() {
                           Paragraph
                         </p>
                         <p className="text-sm text-gray-500">
-                          Create a paragraph question
+                          Tạo một câu hỏi đoạn văn
                         </p>
                       </div>
                     </button>
@@ -1805,7 +1773,7 @@ export default function EditQuiz() {
                           Drag & Drop
                         </p>
                         <p className="text-sm text-gray-500">
-                          Create a drag and drop question
+                          Tạo một câu hỏi kéo và thả
                         </p>
                       </div>
                     </button>
@@ -1818,24 +1786,24 @@ export default function EditQuiz() {
                           Dropdown
                         </p>
                         <p className="text-sm text-gray-500">
-                          Create a dropdown question
+                          Tạo một câu hỏi dropdown
                         </p>
                       </div>
                     </button>
                   </div>
                 </div>
                 <div className="bg-gradient-to-br from-darkblue to-blue-800 text-white p-8">
-                  <h3 className="text-xl font-bold mb-4">Question Types</h3>
+                  <h3 className="text-xl font-bold mb-4">Loại câu hỏi</h3>
                   <p className="text-blue-100 mb-6">
-                    Choose from different question types to create engaging and
-                    interactive quizzes. Each type offers unique ways to test
-                    knowledge and understanding.
+                    Chọn từ các loại câu hỏi khác nhau để tạo ra các quiz thú vị
+                    và tương tác. Mỗi loại câu hỏi cung cấp các cách để kiểm tra
+                    kiến thức và hiểu biết.
                   </p>
                   <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
                     <p className="text-sm font-medium">Pro Tip</p>
                     <p className="text-sm text-blue-100">
-                      Mix different question types to keep your quiz interesting
-                      and test various skills.
+                      Trộn các loại câu hỏi khác nhau để giữ quiz thú vị và kiểm
+                      tra các kỹ năng khác nhau.
                     </p>
                   </div>
                 </div>
@@ -1894,10 +1862,10 @@ export default function EditQuiz() {
                       className="text-red-500"
                     />
                   </div>
-                  <h3 className="text-2xl font-bold mb-2">Delete Quiz</h3>
+                  <h3 className="text-2xl font-bold mb-2">Xóa quiz</h3>
                   <p className="text-gray-600 text-center mb-6">
-                    Are you sure you want to delete this quiz? This action
-                    cannot be undone.
+                    Bạn có chắc chắn muốn xóa quiz này không? Hành động này
+                    không thể hoàn tác.
                   </p>
                   <div className="flex gap-4 w-full">
                     <button
@@ -1905,7 +1873,7 @@ export default function EditQuiz() {
                       className="flex-1 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 font-medium"
                       disabled={isDeleting}
                     >
-                      Cancel
+                      Hủy bỏ
                     </button>
                     <button
                       onClick={handleDeleteQuiz}
@@ -1915,7 +1883,7 @@ export default function EditQuiz() {
                       {isDeleting ? (
                         <>
                           <span className="loader"></span>
-                          <span>Deleting...</span>
+                          <span>Đang xóa...</span>
                         </>
                       ) : (
                         "Delete Quiz"
@@ -1928,12 +1896,15 @@ export default function EditQuiz() {
           </div>
         )}
       </form>
-      <SelectQuizModal
-        isOpen={isSelectQuizModalOpen}
-        onClose={() => setIsSelectQuizModalOpen(false)}
-        onAddQuestions={handleAddQuestionsFromBank}
-        selectedBankIds={selectedBankIds}
-      />
+      {/* Select Quiz Modal */}
+      {isSelectQuizModalOpen && (
+        <SelectQuizModal
+          isOpen={isSelectQuizModalOpen}
+          onClose={() => setIsSelectQuizModalOpen(false)}
+          onAddQuestions={handleAddQuestionsFromBank}
+          selectedBankIds={selectedBankIds}
+        />
+      )}
     </div>
   );
 }

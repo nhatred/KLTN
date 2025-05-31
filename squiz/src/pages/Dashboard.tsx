@@ -11,6 +11,7 @@ const API_BASE_URL = "http://localhost:5000/api";
 
 export default function Dashboard() {
   const [quizs, setQuizs] = useState<Quiz[]>([]);
+  const [examQuizs, setExamQuizs] = useState<Quiz[]>([]);
   const [recentQuizzes, setRecentQuizzes] = useState<Quiz[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -54,16 +55,25 @@ export default function Dashboard() {
       }
 
       const quizzes = await response.json();
-      console.log("Received quizzes:", quizzes);
 
       if (!Array.isArray(quizzes)) {
         throw new Error("Received data is not an array");
       }
 
-      setQuizs(quizzes);
+      setQuizs(
+        quizzes.filter(
+          (quiz: Quiz) => quiz.isPublic === true && quiz.isExam === false
+        )
+      );
+      setExamQuizs(
+        quizzes.filter(
+          (quiz: Quiz) => quiz.isPublic === true && quiz.isExam === true
+        )
+      );
     } catch (error) {
       console.error("Error fetching quizzes:", error);
       setQuizs([]); // Set empty array on error
+      setExamQuizs([]);
     } finally {
       setIsLoadingQuizzes(false);
     }
@@ -116,10 +126,6 @@ export default function Dashboard() {
       fetchRecentQuizzes();
     }
   }, [user?.id]);
-
-  const filteredQuizzes = quizs.filter((quiz: Quiz) => quiz.isPublic === true);
-
-  console.log("Filtered quizzes:", filteredQuizzes);
 
   return (
     <div className="pt-16">
@@ -192,7 +198,7 @@ export default function Dashboard() {
         )
       )}
 
-      <div>
+      <div className="mb-20">
         <div className="flex justify-between mb-5">
           <h1 className="text-2xl mb-5">Các Squizz</h1>
           <div className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full">
@@ -203,13 +209,44 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl box-shadow p-12">
             <SpinnerLoading />
           </div>
-        ) : filteredQuizzes.length === 0 ? (
+        ) : quizs.length === 0 ? (
           <div className="bg-white rounded-xl box-shadow p-12 text-center">
             <p>Không có quiz nào</p>
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-5">
-            {filteredQuizzes.map((quiz: Quiz) => {
+            {quizs.map((quiz: Quiz) => {
+              console.log("Rendering quiz:", quiz);
+              return (
+                <QuizzCard
+                  key={quiz._id}
+                  quiz={quiz}
+                  handleCardClick={() => modalPlay(quiz)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="pb-20">
+        <div className="flex justify-between mb-5">
+          <h1 className="text-2xl mb-5">Các đề thi thử</h1>
+          <div className="flex items-center justify-center cursor-pointer h-10 bg-darkblue btn-hover text-background font-semibold rounded-full">
+            <p className="px-5 py-1">Xem thêm</p>
+          </div>
+        </div>
+        {isLoadingQuizzes ? (
+          <div className="bg-white rounded-xl box-shadow p-12">
+            <SpinnerLoading />
+          </div>
+        ) : examQuizs.length === 0 ? (
+          <div className="bg-white rounded-xl box-shadow p-12 text-center">
+            <p>Không có đề thi thử nào</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-5">
+            {examQuizs.map((quiz: Quiz) => {
               console.log("Rendering quiz:", quiz);
               return (
                 <QuizzCard

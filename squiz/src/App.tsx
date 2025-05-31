@@ -4,7 +4,6 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Activity from "./pages/Activity";
 import MainLayout from "./layout/MainLayout";
-import CreateQuiz from "./pages/CreateQuiz";
 import MyQuiz from "./pages/MyQuiz";
 import CreatedByMe from "./components/CreatedByMe";
 import HostedQuizzes from "./components/HostedQuizzes";
@@ -17,6 +16,7 @@ import JoinRoom from "./pages/JoinRoom";
 import RoomManager from "./pages/RoomManager";
 import JoinRoomForStudent from "./pages/JoinRoomForStudent";
 import ExamBank from "./pages/ExamBank";
+import ExamCreatedByMe from "./components/ExamCreatedByMe";
 function App() {
   return (
     <BrowserRouter>
@@ -31,11 +31,11 @@ function App() {
               <Route path="created-by-me" element={<CreatedByMe />} />
               <Route path="hosted-quizzes" element={<HostedQuizzes />} />
               <Route path="liked-quizzes" element={<LikedQuizzes />} />
+              <Route path="exam-created-by-me" element={<ExamCreatedByMe />} />
             </Route>
             <Route path="room-manager" element={<RoomManager />} />
             <Route path="exam-bank" element={<ExamBank />} />
           </Route>
-          <Route path="/create-quiz" element={<CreateQuiz />} />
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />
           <Route path="/create-room/:id" element={<CreateRoom />} />

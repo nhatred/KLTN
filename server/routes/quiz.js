@@ -12,20 +12,16 @@ import {
   getUserQuizHistory,
   saveQuizSession,
   getQuizSession,
-  completeQuizSession
+  completeQuizSession,
+  getUserExams,
 } from "../controllers/quizController.js";
 
 const router = express.Router();
-// Tạo quizz 
+// Tạo quizz
 router.post("/", upload.single("imageUrl"), createQuiz);
 // Lấy tất cả các quizz của user
 router.get("/user/:userId", getUserQuizzes);
-
-
-
-
-
-
+router.get("/user-exams/:userId", getUserExams);
 
 // Quiz session management routes - must be before parameterized routes
 router.post("/session/complete", completeQuizSession);

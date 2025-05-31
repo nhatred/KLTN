@@ -229,8 +229,9 @@ export default function JoinQuiz() {
     name: "",
     topic: "",
     difficulty: "",
-    isPublic: "public",
+    isPublic: true,
     questions: [] as Question[],
+    isExam: false,
     imageUrl: "",
     createdAt: "",
     totalPlays: 0,
@@ -465,6 +466,41 @@ export default function JoinQuiz() {
   const getQuizData = useCallback(async () => {
     try {
       setIsLoading(true);
+
+      // Kiểm tra dữ liệu trong localStorage trước
+      const cachedQuizData = localStorage.getItem(`quiz_data_${id}`);
+      if (cachedQuizData) {
+        const parsedData = JSON.parse(cachedQuizData);
+        console.log("=== Restored Quiz Data from Cache ===");
+        console.log("Quiz Name:", parsedData.name);
+        console.log("Quiz Topic:", parsedData.topic);
+        console.log("Quiz Difficulty:", parsedData.difficulty);
+        console.log("Total Questions:", parsedData.questions.length);
+        console.log("Score Per Question:", parsedData.scorePerQuestion);
+        console.log("Time Per Question:", parsedData.timePerQuestion);
+        console.log("Creator:", parsedData.creatorInfo?.name);
+        console.log("Total Plays:", parsedData.totalPlays);
+        console.log("Is Exam Mode:", parsedData.isExam);
+        console.log(
+          "Questions:",
+          parsedData.questions.map((q: any, index: number) => ({
+            questionNumber: index + 1,
+            questionText: q.questionText,
+            numberOfAnswers: q.answers.length,
+            correctAnswer: q.answers.findIndex((a: any) => a.isCorrect),
+            timeForQuestion: q.timePerQuestion || parsedData.timePerQuestion,
+            scoreForQuestion: q.scorePerQuestion || parsedData.scorePerQuestion,
+          }))
+        );
+        console.log("=== End Quiz Data ===");
+
+        setQuizData(parsedData);
+        setTimeLeft(parsedData.timePerQuestion || 30);
+        setIsLoading(false);
+        return;
+      }
+
+      // Nếu không có dữ liệu trong cache, gọi API
       const response = await fetch(`${API_BASE_URL}/quiz/${id}`);
 
       if (!response.ok) {
@@ -484,6 +520,33 @@ export default function JoinQuiz() {
         return;
       }
 
+      // Lưu dữ liệu vào localStorage
+      localStorage.setItem(`quiz_data_${id}`, JSON.stringify(responseData));
+
+      // Add detailed logging
+      console.log("=== Quiz Data ===");
+      console.log("Quiz Name:", responseData.name);
+      console.log("Quiz Topic:", responseData.topic);
+      console.log("Quiz Difficulty:", responseData.difficulty);
+      console.log("Total Questions:", responseData.questions.length);
+      console.log("Score Per Question:", responseData.scorePerQuestion);
+      console.log("Time Per Question:", responseData.timePerQuestion);
+      console.log("Creator:", responseData.creatorInfo?.name);
+      console.log("Total Plays:", responseData.totalPlays);
+      console.log("Is Exam Mode:", responseData.isExam);
+      console.log(
+        "Questions:",
+        responseData.questions.map((q: any, index: number) => ({
+          questionNumber: index + 1,
+          questionText: q.questionText,
+          numberOfAnswers: q.answers.length,
+          correctAnswer: q.answers.findIndex((a: any) => a.isCorrect),
+          timeForQuestion: q.timePerQuestion || responseData.timePerQuestion,
+          scoreForQuestion: q.scorePerQuestion || responseData.scorePerQuestion,
+        }))
+      );
+      console.log("=== End Quiz Data ===");
+
       setQuizData(responseData);
       setTimeLeft(responseData.timePerQuestion || 30);
       setIsLoading(false);
@@ -492,6 +555,16 @@ export default function JoinQuiz() {
       setError("Khong the tai du lieu quiz. Vui long thu lai sau.");
       setIsLoading(false);
     }
+  }, [id]);
+
+  // Thêm cleanup khi component unmount
+  useEffect(() => {
+    return () => {
+      // Xóa dữ liệu quiz khỏi localStorage khi rời khỏi trang
+      if (id) {
+        localStorage.removeItem(`quiz_data_${id}`);
+      }
+    };
   }, [id]);
 
   // Lay du lieu quiz ban dau
@@ -1017,6 +1090,19 @@ export default function JoinQuiz() {
         await clearQuizSession(id);
       }
 
+      // Format user answers correctly
+      const formattedUserAnswers = userAnswers.map((answer) => ({
+        questionId: answer.questionId,
+        userAnswer: answer.userAnswer,
+        isCorrect: answer.correct || false, // Ensure isCorrect is always present
+        timeToAnswer: answer.timeToAnswer,
+        score: answer.score || 0,
+        questionIndex: answer.questionIndex,
+      }));
+
+      // Log formatted data before sending
+      console.log("Sending formatted answers:", formattedUserAnswers);
+
       const response = await fetch(`${API_BASE_URL}/quiz/results`, {
         method: "POST",
         headers: {
@@ -1024,14 +1110,21 @@ export default function JoinQuiz() {
         },
         body: JSON.stringify({
           quizId: quizData._id,
-          userAnswers,
+          userAnswers: formattedUserAnswers,
           score: quizState.score,
           totalScore: totalScoreValue,
           userId: isSignedIn ? user?.id : null,
           username: sessionStorage.getItem("username") || "Anonymous",
-          deviceId: getDeviceId(), // Thêm deviceId để kết nối với phiên chơi
+          deviceId: getDeviceId(),
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to save quiz results: ${errorData.message || "Unknown error"}`
+        );
+      }
 
       const data = await response.json();
 
@@ -1039,10 +1132,11 @@ export default function JoinQuiz() {
         console.log("Quiz results saved successfully");
         setResultsSaved(true);
       } else {
-        console.error("Failed to save quiz results:", data.message);
+        throw new Error(`Failed to save quiz results: ${data.message}`);
       }
     } catch (error) {
       console.error("Error saving quiz results:", error);
+      // Không set error state để không ảnh hưởng đến UI
     }
   }, [
     quizData._id,

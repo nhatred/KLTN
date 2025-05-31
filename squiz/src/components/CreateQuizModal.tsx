@@ -3,7 +3,11 @@ import { useNavigate } from "react-router";
 import { useForm } from "react-hook-form";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, ImageUploadIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  ImageUploadIcon,
+  FileEditIcon,
+} from "@hugeicons/core-free-icons";
 import imageCompression from "browser-image-compression";
 
 const API_BASE_URL = "http://localhost:5000/api";
@@ -23,12 +27,15 @@ export default function CreateQuizModal({
   const [isCreating, setIsCreating] = useState(false);
   const [imageData, setImageData] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm();
+    formState: { errors, isValid, isDirty },
+  } = useForm({
+    mode: "onChange",
+  });
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -105,19 +112,39 @@ export default function CreateQuizModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      onClick={onClose}
+      className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 transition-all duration-300 ${
+        isAnimating ? "opacity-0" : "opacity-100"
+      }`}
     >
       <div
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4"
-        onClick={(e) => e.stopPropagation()}
+        className={`bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden transition-all duration-300 transform ${
+          isAnimating ? "scale-95 opacity-0" : "scale-100 opacity-100"
+        }`}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-orange to-red-wine p-6 rounded-t-xl">
+        <div className="bg-gradient-to-r from-orange to-red-wine p-6 text-white">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-white">Create New Quiz</h2>
+            <div className="flex gap-3 items-center">
+              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                <HugeiconsIcon icon={FileEditIcon} className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-background">
+                  Tạo một quiz mới
+                </h2>
+                <p className="text-blue-100 text-sm">
+                  Tạo một quiz mới để bắt đầu học tập và thi thử
+                </p>
+              </div>
+            </div>
             <button
-              onClick={onClose}
+              onClick={() => {
+                setIsAnimating(true);
+                setTimeout(() => {
+                  setIsAnimating(false);
+                  onClose();
+                }, 300);
+              }}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
             >
               <HugeiconsIcon
@@ -132,11 +159,14 @@ export default function CreateQuizModal({
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div className="space-y-4">
             <div>
+              <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
+                Tên quiz <span className="text-red-500">*</span>
+              </label>
               <input
                 {...register("name", { required: "Quiz name is required" })}
                 type="text"
-                placeholder="Enter Quiz name"
-                className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200 ${
+                placeholder="Nhập tên quiz"
+                className={`w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900 ${
                   errors.name ? "border-red-500" : "border-gray-300"
                 }`}
               />
@@ -149,18 +179,21 @@ export default function CreateQuizModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
+                  Môn học <span className="text-red-500">*</span>
+                </label>
                 <select
                   {...register("topic", { required: "Topic is required" })}
-                  className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200 ${
+                  className={`w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900 ${
                     errors.topic ? "border-red-500" : "border-gray-300"
                   }`}
                 >
-                  <option value="">Select Topic</option>
-                  <option value="math">Mathematics</option>
-                  <option value="english">English</option>
-                  <option value="physics">Physics</option>
-                  <option value="history">History</option>
-                  <option value="other">Other</option>
+                  <option value="">Chọn môn học</option>
+                  <option value="math">Toán</option>
+                  <option value="english">Tiếng Anh</option>
+                  <option value="physics">Vật lý</option>
+                  <option value="history">Lịch sử</option>
+                  <option value="other">Khác</option>
                 </select>
                 {errors.topic && (
                   <p className="mt-1 text-red-500 text-sm">
@@ -170,18 +203,21 @@ export default function CreateQuizModal({
               </div>
 
               <div>
+                <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
+                  Độ khó <span className="text-red-500">*</span>
+                </label>
                 <select
                   {...register("difficulty", {
                     required: "Difficulty is required",
                   })}
-                  className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200 ${
+                  className={`w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900 ${
                     errors.difficulty ? "border-red-500" : "border-gray-300"
                   }`}
                 >
-                  <option value="">Select Difficulty</option>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
+                  <option value="">Chọn độ khó</option>
+                  <option value="easy">Dễ</option>
+                  <option value="medium">Trung bình</option>
+                  <option value="hard">Khó</option>
                 </select>
                 {errors.difficulty && (
                   <p className="mt-1 text-red-500 text-sm">
@@ -192,13 +228,24 @@ export default function CreateQuizModal({
             </div>
 
             <div>
+              <label className="block font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
+                Công khai <span className="text-red-500">*</span>
+              </label>
               <select
-                {...register("isPublic")}
-                className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange/30 transition-all duration-200"
+                {...register("isPublic", { required: "isPublic is required" })}
+                className={`w-full p-4 font-medium border-2 border-gray-200 rounded-xl focus:border-orange transition-all duration-200 text-gray-900 ${
+                  errors.isPublic ? "border-red-500" : "border-gray-300"
+                }`}
               >
-                <option value="true">Public</option>
-                <option value="false">Private</option>
+                <option value="">Chọn công khai</option>
+                <option value="true">Công khai</option>
+                <option value="false">Riêng tư</option>
               </select>
+              {errors.isPublic && (
+                <p className="mt-1 text-red-500 text-sm">
+                  {errors.isPublic.message?.toString()}
+                </p>
+              )}
             </div>
 
             <div>
@@ -216,7 +263,7 @@ export default function CreateQuizModal({
                 />
                 <label
                   htmlFor="image-upload"
-                  className={`cursor-pointer flex items-center gap-2 p-3 border border-dashed border-gray-300 rounded-lg hover:border-orange/50 transition-colors duration-200 ${
+                  className={`cursor-pointer flex items-center gap-2 p-3 border-2 border-dashed border-orange rounded-lg hover:border-orange/50 transition-colors duration-200 ${
                     isUploading ? "opacity-50" : ""
                   }`}
                 >
@@ -226,9 +273,7 @@ export default function CreateQuizModal({
                     className="text-gray-500"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    {isUploading
-                      ? "Uploading image..."
-                      : "Upload Quiz background image"}
+                    {isUploading ? "Đang tải ảnh..." : "Tải ảnh nền quiz"}
                   </span>
                 </label>
               </div>
@@ -250,26 +295,36 @@ export default function CreateQuizModal({
           </div>
 
           {/* Footer */}
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button
               type="button"
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+              onClick={() => {
+                setIsAnimating(true);
+                setTimeout(() => {
+                  setIsAnimating(false);
+                  onClose();
+                }, 300);
+              }}
+              className="px-6 py-3 text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-xl transition-all duration-200 font-medium"
             >
-              Cancel
+              Hủy bỏ
             </button>
             <button
               type="submit"
-              disabled={isCreating}
-              className="px-6 py-2 bg-gradient-to-r from-orange to-red-wine text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+              disabled={isCreating || !isValid || !isDirty}
+              className="px-6 py-3 bg-gradient-to-r from-orange to-red-wine text-white rounded-xl hover:from-orange-700 hover:to-red-wine-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-medium flex items-center gap-2"
             >
               {isCreating ? (
                 <>
                   <span className="loader"></span>
-                  <span>Creating...</span>
+                  <span>Đang tạo...</span>
                 </>
               ) : (
-                "Create Quiz"
+                <div className="flex items-center gap-2">
+                  <HugeiconsIcon icon={FileEditIcon} className="w-5 h-5" />
+                  <span>Tạo quiz</span>
+                </div>
               )}
             </button>
           </div>

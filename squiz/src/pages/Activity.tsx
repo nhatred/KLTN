@@ -114,8 +114,7 @@ export default function Activity() {
         console.log("Practice data:", practiceData.data);
         // Phân loại quiz dựa vào isExam và đã nộp bài
         const practiceQuizzes = practiceData.data.filter(
-          (history: QuizPracticeResult) =>
-            !history.quiz.isExam && history.stats.totalQuestions > 0
+          (history: QuizPracticeResult) => history.stats.totalQuestions > 0
         );
         const examQuizzes = practiceData.data
           .filter(
@@ -366,12 +365,12 @@ export default function Activity() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {quizRoomResults.length > 0 ? (
             quizRoomResults.map((result) => (
-              <div style={{ backgroundColor: "#fcfbfa" }}>
-                <div
-                  key={result.participationId}
-                  onClick={() => handleExamClick(result)}
-                  className="group relative bg-white rounded-2xl p-5 border border-gray-200 hover:border-red-300 transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-red-100/50 hover:-translate-y-1"
-                >
+              <div
+                key={result.participationId}
+                onClick={() => handleExamClick(result)}
+                style={{ backgroundColor: "#fcfbfa" }}
+              >
+                <div className="group relative bg-white rounded-2xl p-5 border border-gray-200 hover:border-red-300 transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-red-100/50 hover:-translate-y-1">
                   {/* Header Section */}
                   <div className="flex items-start justify-between mb-6">
                     <div className="flex-1 pr-4">
