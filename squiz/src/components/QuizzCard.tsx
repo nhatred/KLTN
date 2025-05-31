@@ -17,22 +17,14 @@ interface QuizzCardProps {
   onQuizDeleted?: () => void;
 }
 
-export default function QuizzCard({
-  quiz,
-  handleCardClick,
-  onQuizDeleted,
-}: QuizzCardProps) {
-  const handleDelete = async () => {
-    try {
-      // ... existing delete logic ...
+export default function QuizzCard({ quiz, handleCardClick }: QuizzCardProps) {
+  console.log("QUIZ", quiz.questionBankQueries);
 
-      if (onQuizDeleted) {
-        onQuizDeleted();
-      }
-    } catch (error) {
-      console.error("Error deleting quiz:", error);
-    }
-  };
+  const totalQuestions = quiz.questionBankQueries?.reduce(
+    (acc: number, query: any) => acc + query.limit,
+    0
+  );
+  console.log("TOTAL QUESTIONS", totalQuestions);
 
   return (
     <div
@@ -73,15 +65,7 @@ export default function QuizzCard({
           <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-full">
             <HugeiconsIcon icon={HelpSquareIcon} size={20} color="#FF5733" />
             <p className="font-medium text-sm">
-              {quiz.questions?.length ||
-                (() => {
-                  const totalQuestions = quiz.questionBankQueries?.reduce(
-                    (acc: number, query: any) => acc + query.limit,
-                    0
-                  );
-                  return totalQuestions;
-                })()}{" "}
-              câu hỏi
+              {quiz.questions?.length || totalQuestions} câu
             </p>
           </div>
 

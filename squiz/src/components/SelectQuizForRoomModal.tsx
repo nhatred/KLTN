@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Quiz } from "../types/Quiz";
 import {
   Add01Icon,
   Calendar03Icon,
@@ -17,22 +18,6 @@ import { useNavigate } from "react-router";
 import axios from "axios";
 import SpinnerLoading from "./SpinnerLoading";
 
-interface Quiz {
-  _id: string;
-  name: string;
-  topic: string;
-  isExam: boolean;
-  imageUrl: string;
-  description?: string;
-  difficulty?: string;
-  questions?: any[];
-  duration?: number;
-  creatorInfo: {
-    name: string;
-    avatar: string;
-  };
-}
-
 interface SelectQuizForRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -45,13 +30,14 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [exams, setExams] = useState<Quiz[]>([]);
   const [selectedType, setSelectedType] = useState<"quiz" | "exam">("quiz");
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const { getToken } = useAuth();
   const [viewMode, setViewMode] = useState("grid");
   const [isAnimating, setIsAnimating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
+  const { user } = useUser();
   // Add effect to manage body scroll
   useEffect(() => {
     if (isOpen) {
@@ -68,6 +54,7 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchQuizzes();
+      fetchExams();
     }
   }, [isOpen]);
 
@@ -75,28 +62,56 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
     try {
       setIsLoading(true);
       const token = await getToken();
-      const response = await axios.get("http://localhost:5000/api/quiz", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await axios.get(
+        `http://localhost:5000/api/quiz/user/${user?.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       setQuizzes(response.data);
+      console.log("Quizzes:", response.data);
     } catch (error) {
       console.error("Error fetching quizzes:", error);
+      setQuizzes([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredQuizzes = quizzes.filter(
-    (quiz) =>
-      quiz.isExam === (selectedType === "exam") &&
-      quiz.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const fetchExams = async () => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      const response = await axios.get(
+        `http://localhost:5000/api/quiz/user-exams/${user?.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const examData = response.data?.data || [];
+      setExams(examData);
+      console.log("Exams:", examData);
+    } catch (error) {
+      console.error("Error fetching exams:", error);
+      setExams([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  const filteredQuizzes = (quizzes || []).filter((quiz) =>
+    quiz.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const filteredExams = (exams || []).filter((exam) =>
+    exam.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleQuizSelect = (quiz: Quiz) => {
-    setSelectedQuiz(quiz);
-    console.log("Selected Quiz:", quiz);
+  const handleQuizSelect = (item: Quiz) => {
+    setSelectedQuiz(item);
+    console.log("Selected:", item);
   };
 
   const handleCreateRoom = () => {
@@ -105,6 +120,161 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
       onClose();
       navigate(`/create-room/${selectedQuiz._id}`);
     }
+  };
+
+  // Render items based on selected type
+  const renderItems = () => {
+    const items = selectedType === "quiz" ? filteredQuizzes : filteredExams;
+
+    // Hàm tính tổng số câu hỏi
+    const getTotalQuestions = (item: Quiz) => {
+      return (
+        item.questionBankQueries?.reduce(
+          (acc: number, query: any) => acc + query.limit,
+          0
+        ) || 0
+      );
+    };
+
+    if (isLoading) {
+      return (
+        <div className="h-[400px]">
+          <SpinnerLoading />
+        </div>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              className="w-12 h-12 text-gray-400"
+            />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            {searchTerm
+              ? "Không tìm thấy kết quả"
+              : `Chưa có ${selectedType === "quiz" ? "quiz" : "đề thi"} nào`}
+          </h3>
+          <p className="text-gray-600">
+            {searchTerm
+              ? `Thử tìm kiếm với từ khóa khác hoặc tạo ${selectedType} mới`
+              : `Tạo ${
+                  selectedType === "quiz" ? "quiz" : "đề thi"
+                } đầu tiên của bạn`}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={
+          viewMode === "grid"
+            ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+            : "space-y-4"
+        }
+      >
+        {items.map((item) => {
+          const totalQuestions = getTotalQuestions(item);
+          console.log("Item:", item.name, "Total Questions:", totalQuestions);
+
+          return (
+            <div
+              key={item._id}
+              onClick={() => handleQuizSelect(item)}
+              className={`cursor-pointer transition-all duration-200 rounded-xl border-2 hover:shadow-lg ${
+                selectedQuiz?._id === item._id
+                  ? "border-orange-500 bg-orange-50 shadow-md transform scale-105"
+                  : "border-gray-200 hover:border-orange-300 bg-white"
+              } ${viewMode === "list" ? "flex items-center p-4" : "p-6"}`}
+            >
+              {viewMode === "grid" ? (
+                <div className="space-y-4">
+                  {/* Quiz/Exam Image/Icon */}
+                  <div className="relative">
+                    <div className="w-full h-32 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center">
+                      {item.imageUrl && (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover rounded-xl"
+                        />
+                      )}
+                    </div>
+                    <div
+                      className={`absolute top-3 right-3 px-2 py-1 bg-darkblue text-background rounded-full text-xs font-medium border`}
+                    >
+                      {item.difficulty}
+                    </div>
+                  </div>
+
+                  {/* Quiz/Exam Info */}
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-lg leading-tight mb-1">
+                        {item.name}
+                      </h3>
+                      <p className="text-orange-600 font-medium text-sm">
+                        {item.topic}
+                      </p>
+                    </div>
+
+                    <p className="text-gray-600 text-sm line-clamp-2">
+                      {item.description}
+                    </p>
+
+                    {/* Stats */}
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-full">
+                        <HugeiconsIcon
+                          icon={LeftToRightListDashIcon}
+                          className="w-4 h-4"
+                          color="#FF5733"
+                        />
+                        <p className="font-medium text-sm">
+                          {item.questions?.length || totalQuestions} câu
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4 w-full">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-bold text-gray-900 truncate">
+                        {item.name}
+                      </h3>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium border`}
+                      >
+                        {item.difficulty}
+                      </span>
+                    </div>
+                    <p className="text-orange-600 font-medium text-sm mb-2">
+                      {item.topic}
+                    </p>
+                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-full w-fit">
+                      <HugeiconsIcon
+                        icon={LeftToRightListDashIcon}
+                        className="w-4 h-4"
+                        color="#FF5733"
+                      />
+                      <p className="font-medium text-sm">
+                        {item.questions?.length || totalQuestions} câu
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   if (!isOpen) return null;
@@ -231,7 +401,9 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
             <div className="flex items-center gap-2 text-blue-800">
               <HugeiconsIcon icon={FilterHorizontalIcon} className="w-5 h-5" />
               <span className="font-medium">
-                {filteredQuizzes.length}{" "}
+                {selectedType === "quiz"
+                  ? filteredQuizzes.length
+                  : filteredExams.length}{" "}
                 {selectedType === "quiz" ? "quiz" : "đề thi"}
                 {searchTerm && ` phù hợp với "${searchTerm}"`}
               </span>
@@ -246,126 +418,8 @@ const SelectQuizForRoomModal: React.FC<SelectQuizForRoomModalProps> = ({
             )}
           </div>
 
-          {/* Quiz List with Loading State */}
-          {isLoading ? (
-            <div className="h-[400px]">
-              <SpinnerLoading />
-            </div>
-          ) : filteredQuizzes.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <HugeiconsIcon
-                  icon={Search01Icon}
-                  className="w-12 h-12 text-gray-400"
-                />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {searchTerm
-                  ? "Không tìm thấy kết quả"
-                  : `Chưa có ${
-                      selectedType === "quiz" ? "quiz" : "đề thi"
-                    } nào`}
-              </h3>
-              <p className="text-gray-600">
-                {searchTerm
-                  ? `Thử tìm kiếm với từ khóa khác hoặc tạo ${selectedType} mới`
-                  : `Tạo ${
-                      selectedType === "quiz" ? "quiz" : "đề thi"
-                    } đầu tiên của bạn`}
-              </p>
-            </div>
-          ) : (
-            <div
-              className={
-                viewMode === "grid"
-                  ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
-                  : "space-y-4"
-              }
-            >
-              {filteredQuizzes.map((quiz) => (
-                <div
-                  key={quiz._id}
-                  onClick={() => handleQuizSelect(quiz)}
-                  className={`cursor-pointer transition-all duration-200 rounded-xl border-2 hover:shadow-lg ${
-                    selectedQuiz?._id === quiz._id
-                      ? "border-orange-500 bg-orange-50 shadow-md transform scale-105"
-                      : "border-gray-200 hover:border-orange-300 bg-white"
-                  } ${viewMode === "list" ? "flex items-center p-4" : "p-6"}`}
-                >
-                  {viewMode === "grid" ? (
-                    <div className="space-y-4">
-                      {/* Quiz Image/Icon */}
-                      <div className="relative">
-                        <div className="w-full h-32 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center">
-                          {quiz.imageUrl && (
-                            <img
-                              src={quiz.imageUrl}
-                              alt={quiz.name}
-                              className="w-full h-full object-cover rounded-xl"
-                            />
-                          )}
-                        </div>
-                        <div
-                          className={`absolute top-3 right-3 px-2 py-1 bg-darkblue text-background rounded-full text-xs font-medium border`}
-                        >
-                          {quiz.difficulty}
-                        </div>
-                      </div>
-
-                      {/* Quiz Info */}
-                      <div className="space-y-3">
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg leading-tight mb-1">
-                            {quiz.name}
-                          </h3>
-                          <p className="text-orange-600 font-medium text-sm">
-                            {quiz.topic}
-                          </p>
-                        </div>
-
-                        <p className="text-gray-600 text-sm line-clamp-2">
-                          {quiz.description}
-                        </p>
-
-                        {/* Stats */}
-                        <div className="flex items-center justify-between text-sm text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <HugeiconsIcon
-                              icon={LeftToRightListDashIcon}
-                              className="w-4 h-4"
-                            />
-                            <span>
-                              {quiz.questions?.length ||
-                                Math.floor(Math.random() * 20)}{" "}
-                              câu
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-4 w-full">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="font-bold text-gray-900 truncate">
-                            {quiz.name}
-                          </h3>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium border`}
-                          >
-                            {quiz.difficulty}
-                          </span>
-                        </div>
-                        <p className="text-orange-600 font-medium text-sm mb-2">
-                          {quiz.topic}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Quiz/Exam List */}
+          {renderItems()}
         </div>
 
         {/* Footer */}

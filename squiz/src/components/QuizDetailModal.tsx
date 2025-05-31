@@ -117,7 +117,12 @@ export default function QuizDetailModal({
                   color="#FF5733"
                 />
                 <p className="font-semibold">
-                  {quiz?.questions?.length || 0} câu hỏi
+                  {quiz?.questions?.length ||
+                    quiz?.questionBankQueries?.reduce(
+                      (acc: number, query: any) => acc + query.limit,
+                      0
+                    )}{" "}
+                  câu hỏi
                 </p>
               </div>
 

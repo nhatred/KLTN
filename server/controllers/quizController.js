@@ -203,12 +203,26 @@ async function createQuiz(req, res) {
 
 async function getAllQuiz(req, res) {
   try {
-    const quizzes = await Quiz.find();
+    const quizzes = await Quiz.find().populate({
+      path: "creator",
+      model: "User",
+      select: "name imageUrl",
+    });
     const quizzesWithQuestions = await Promise.all(
       quizzes.map(async (quiz) => {
         const questions = await Question.find({ quizId: quiz._id });
+        const quizObj = quiz.toObject();
+
+        // Format creator info
+        if (quizObj.creator) {
+          quizObj.creatorInfo = {
+            name: quizObj.creator.name || "Unknown User",
+            avatar: quizObj.creator.imageUrl || "",
+          };
+        }
+
         return {
-          ...quiz.toObject(),
+          ...quizObj,
           questions,
         };
       })
@@ -779,8 +793,13 @@ async function getUserQuizHistory(req, res) {
       .populate({
         path: "quiz",
         select:
-          "_id name imageUrl difficulty topic totalPlays createdAt isExam",
+          "_id name imageUrl difficulty topic totalPlays createdAt isExam questionBankQueries",
         model: "Quiz",
+        populate: {
+          path: "creator",
+          model: "User",
+          select: "name imageUrl",
+        },
       })
       .sort({ joinedAt: -1 })
       .lean()
@@ -798,7 +817,18 @@ async function getUserQuizHistory(req, res) {
             );
             return null;
           }
+          // Format creator info
+          let creatorInfo = {
+            name: "Unknown User",
+            avatar: "",
+          };
 
+          if (participation.quiz.creator) {
+            creatorInfo = {
+              name: participation.quiz.creator.name || "Unknown User",
+              avatar: participation.quiz.creator.imageUrl || "",
+            };
+          }
           // Lấy danh sách submissions
           const submissions = await Submission.find({
             participant: participation._id,
@@ -837,6 +867,9 @@ async function getUserQuizHistory(req, res) {
               createdAt: participation.quiz.createdAt,
               isExam: participation.quiz.isExam,
               questions: quizQuestions || [],
+              questionBankQueries: participation.quiz.questionBankQueries || [],
+              creatorInfo: creatorInfo,
+              creator: participation.quiz.creator,
             },
             score: participation.score || 0,
             joinedAt: participation.joinedAt || participation.createdAt,
