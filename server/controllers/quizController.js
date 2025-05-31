@@ -1136,6 +1136,43 @@ async function completeQuizSession(req, res) {
   }
 }
 
+// lấy chi tiết 1 quizzz (Thêm vào)
+async function getQuizDetails(req, res) {
+  try {
+    console.log("Đã vào quizz Detail: ", req.params.id);
+    const quizId = req.params.id; // Lấy quizId từ params
+    if (!mongoose.Types.ObjectId.isValid(quizId)) {
+      console.log("ID quiz không hợp lệ");
+      return res.status(400).json({ message: "ID quiz không hợp lệ" });
+    }
+
+    const quiz = await Quiz.findById(quizId);
+    console.log("quizz: ", quiz);
+    console.log(quiz.creator, "    ", req.auth.userId);
+    if (!quiz) {
+      console.log("Không tìm thấy quizz");
+    }
+    if (quiz.creator != req.auth.userId) {
+      return res.status(404).json({
+        success: false,
+        message: "Bạn không có quyền sử dụng quiz này",
+      });
+    }
+    if (!quiz) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Quiz not found" });
+    }
+
+    console.log("Trả về quizz: ", quiz);
+
+    return res.status(200).json({ success: true, quiz });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+}
+
 export {
   createQuiz,
   getQuizById,
@@ -1150,4 +1187,5 @@ export {
   saveQuizSession,
   getQuizSession,
   completeQuizSession,
+  getQuizDetails,
 };

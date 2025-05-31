@@ -12,7 +12,7 @@ import {
   endRoom,
   getQuizRoomEndTime,
   updateRoomActive,
-} from "../controllers/QuizRoomController.js";
+} from "../controllers/quizRoomController.js";
 import Participant from "../models/Participant.js";
 import QuizRoom from "../models/QuizRoom.js";
 
@@ -165,25 +165,18 @@ const setupQuizSocket = (io) => {
       }
     });
 
-    socket.on("joinUserRoomManager", async (roomId) => {
+    socket.on("joinUserRoomManager", async (userId) => {
       try {
-        console.log("Host joining room:", roomId);
-        // Join room
-        socket.join(`room_${roomId}`);
-
-        // Get initial room data
-        const room = await QuizRoom.findById(roomId)
+        // Tìm phòng bằng hostId (userId của Clerk)
+        const room = await QuizRoom.findOne({ host: userId })
           .populate("participants")
           .populate({
             path: "participants",
-            populate: {
-              path: "user",
-              select: "name imageUrl",
-            },
+            populate: { path: "user", select: "name imageUrl" },
           });
 
         if (room) {
-          // Send initial room data to host
+          socket.join(`room_${room._id}`); // Join bằng _id của phòng
           socket.emit("roomData", room);
         }
       } catch (err) {
@@ -245,6 +238,44 @@ const setupQuizSocket = (io) => {
           participantId: result.participant._id,
           roomId: result.participant.quizRoom,
         });
+      }
+    });
+
+    socket.on("roomStatusChanged", async (data) => {
+      try {
+        const room = await QuizRoom.findById(data.roomId)
+          .populate("quiz")
+          .populate("questionOrder");
+
+        if (!room) {
+          socket.emit("error", { message: "Room not found" });
+          return;
+        }
+
+        // Emit room status update
+        io.to(`room_${data.roomId}`).emit("roomStatusChanged", {
+          roomId: data.roomId,
+          status: room.status,
+          endTime: room.endTime,
+          questions:
+            room.status === "active"
+              ? room.questionOrder.map((q) => ({
+                  _id: q._id,
+                  questionText: q.questionText,
+                  questionType: q.questionType,
+                  options: q.options,
+                  difficulty: q.difficulty,
+                  answers: q.answers.map((a) => ({
+                    _id: a._id,
+                    text: a.text,
+                    isCorrect: false, // Hide correct answers
+                  })),
+                }))
+              : [],
+        });
+      } catch (error) {
+        console.error("Error in roomStatusChanged:", error);
+        socket.emit("error", { message: "Server error" });
       }
     });
   });

@@ -11,37 +11,58 @@ import ExamSet from "../models/ExamSet.js";
 // Tạo phòng thi mới
 async function createRoom(req, res) {
   try {
-    const { quizId, sections, durationMinutes, startTime, roomName } = req.body;
-    const hostId = req.auth?.userId;
+    const { quizId, durationMinutes, perQuestionTime, startTime, roomName } =
+      req.body;
+    const hostId = req.userId;
 
-    console.log("Create Room Debug:", {
-      quizId,
-      hostId,
-      auth: req.auth,
-      body: req.body,
-    });
+    console.log(roomName);
 
-    // Validate input
-    if (!quizId || !durationMinutes) {
-      return res.status(400).json({
-        success: false,
-        message: "Thiếu thông tin bắt buộc: quizId và durationMinutes",
-      });
-    }
-
-    if (!hostId) {
-      return res.status(401).json({
-        success: false,
-        message: "Không tìm thấy thông tin người dùng",
-      });
-    }
-
-    // Kiểm tra quiz tồn tại
-    const quiz = await Quiz.findById(quizId).lean();
+    // Kiểm tra quiz tồn tại và thuộc về host (sử dụng lean() để tối ưu)
+    const quiz = await Quiz.findById(quizId);
+    console.log("Dữ liệu đưa vào: ", quiz);
     if (!quiz) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đề thi",
+        message: "Quiz không hợp lệ hoặc không có câu hỏi",
+      });
+    }
+
+    let finalDuration;
+
+    if (!durationMinutes) {
+      let totalQuestions = 0;
+
+      if (quiz.questions && quiz.questions.length > 0) {
+        totalQuestions += quiz.questions.length;
+      }
+
+      if (quiz.questionBankQueries && quiz.questionBankQueries.length > 0) {
+        const bankTotal = quiz.questionBankQueries.reduce((sum, query) => {
+          return sum + (query.limit || 0);
+        }, 0);
+
+        totalQuestions += bankTotal;
+      }
+
+      const totalSeconds = perQuestionTime * totalQuestions;
+      finalDuration = Math.ceil(totalSeconds / 60); // Làm tròn lên phút
+    } else {
+      finalDuration = durationMinutes;
+    }
+
+    // Validate input
+    if (!quizId || !finalDuration || !roomName) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Thiếu thông tin bắt buộc: quizId và durationMinutes hoặc perQuestionTime",
+      });
+    }
+
+    if (quiz.creator.toString() !== hostId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền sử dụng quiz này",
       });
     }
 
@@ -56,23 +77,23 @@ async function createRoom(req, res) {
       });
     }
 
+    // parsedStartTime = parsedStartTime.oment(req.body.time).toDate()
     // Tạo phòng
     const roomCode = await generateRoomCode();
     const newRoom = new QuizRoom({
       roomCode,
-      roomName: roomName || `Phòng thi ${roomCode}`,
+      roomName: roomName,
       quiz: quizId,
       host: hostId,
-      durationMinutes,
-      autoStart: !!parsedStartTime,
+      durationMinutes: finalDuration,
+      perQuestionTime,
+      autoStart: !!parsedStartTime, // Tự động kích hoạt nếu có startTime
       startTime: parsedStartTime,
       status: "scheduled",
       ...(parsedStartTime && {
-        endTime: new Date(parsedStartTime.getTime() + durationMinutes * 60000),
+        endTime: new Date(parsedStartTime.getTime() + finalDuration * 60000),
       }),
     });
-
-    console.log("Creating new room:", newRoom); // Debug log
 
     const savedRoom = await newRoom.save();
 
@@ -94,22 +115,19 @@ async function createRoom(req, res) {
       data: savedRoom,
     });
   } catch (error) {
-    console.error("Error in createRoom:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi tạo phòng thi",
       error: error.message,
-      stack: error.stack, // Thêm stack trace để debug
-      systemTime: new Date().toISOString(),
+      systemTime: new Date().toISOString(), // Giúp debug
     });
   }
 }
-
 // Start thủ công
 async function startRoom(req, res) {
   try {
     console.log("Starting room with ID:", req.params.id);
-    const room = await QuizRoom.findById(req.params.id);
+    const room = await QuizRoom.findById(req.params.id).populate("quiz");
     console.log("Found room:", room);
 
     if (!room) {
@@ -135,36 +153,57 @@ async function startRoom(req, res) {
       isActive: room.isActive,
       startTime: room.startTime,
       endTime: room.endTime,
+      questionCount: room.questionOrder?.length,
     });
 
     // Bắt đầu phòng
-    await room.startRoom();
+    const startedRoom = await room.startRoom();
+
+    // Populate question data for response
+    await startedRoom.populate("questionOrder");
 
     console.log("Room after startRoom:", {
-      status: room.status,
-      isActive: room.isActive,
-      startTime: room.startTime,
-      endTime: room.endTime,
+      status: startedRoom.status,
+      isActive: startedRoom.isActive,
+      startTime: startedRoom.startTime,
+      endTime: startedRoom.endTime,
+      questionCount: startedRoom.questionOrder?.length,
     });
+
+    // Safely emit socket event if Socket.IO is available
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`room_${room._id}`).emit("roomStatusChanged", {
+          roomId: room._id,
+          status: startedRoom.status,
+          endTime: startedRoom.endTime,
+          questionCount: startedRoom.questionOrder?.length,
+        });
+      }
+    } catch (socketError) {
+      console.warn("Socket.IO emission failed:", socketError);
+      // Continue with the response even if socket emission fails
+    }
 
     res.json({
       success: true,
       message: "Phòng thi đã bắt đầu thành công",
       room: {
-        id: room._id,
-        roomCode: room.roomCode,
-        status: room.status,
-        startTime: room.startTime,
-        endTime: room.endTime,
-        durationMinutes: room.durationMinutes,
+        id: startedRoom._id,
+        roomCode: startedRoom.roomCode,
+        status: startedRoom.status,
+        startTime: startedRoom.startTime,
+        endTime: startedRoom.endTime,
+        durationMinutes: startedRoom.durationMinutes,
+        questionCount: startedRoom.questionOrder?.length,
       },
     });
   } catch (error) {
     console.error("Error in startRoom:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi bắt đầu phòng thi",
-      error: error.message,
+      message: error.message || "Lỗi khi bắt đầu phòng thi",
     });
   }
 }

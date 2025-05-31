@@ -3,6 +3,7 @@ import QuizRoom from "../models/QuizRoom.js";
 import Question from "../models/Question.js";
 import mongoose from "mongoose";
 import fetch from "node-fetch";
+import Submission from "../models/Submission.js";
 
 // format lại cho phần câu hỏi còn lại
 async function _formatQuestion(question) {
@@ -62,119 +63,170 @@ async function joinRoom(socket, data) {
     });
 
     // Tìm phòng thi và lấy thông tin quiz
-    const room = await QuizRoom.findOne({ roomCode }).populate("quiz");
+    const room = await QuizRoom.findOne({ roomCode })
+      .populate("quiz")
+      .populate({
+        path: "questionOrder",
+        model: "Question",
+        select:
+          "_id questionText questionType timePerQuestion scorePerQuestion difficulty options dragDropPairs answers",
+      });
+
     if (!room) {
       console.log("Room not found:", roomCode);
       throw new Error("Phòng thi không tồn tại hoặc chưa mở");
     }
 
-    console.log("Found room:", {
-      roomId: room._id,
-      quizId: room.quiz?._id,
-      participantCount: room.participants?.length,
-    });
-
-    const quiz = room.quiz;
-
     // Kiểm tra người chơi đã tham gia chưa
     let participant;
-    const participantQuery = user?._id
-      ? { quizRoom: room._id, user: user._id }
-      : { quizRoom: room._id, temporaryUsername };
+    let participantQuery;
 
-    console.log(
-      "Looking for existing participant with query:",
-      participantQuery
-    );
+    if (user?._id) {
+      // Nếu có user ID, tìm theo user ID và trạng thái
+      participantQuery = {
+        quizRoom: room._id,
+        user: user._id,
+        status: { $ne: "completed" }, // Không lấy participant đã hoàn thành
+      };
+    } else if (temporaryUsername) {
+      // Nếu không có user ID nhưng có temporary username, tìm theo temporary username
+      participantQuery = {
+        quizRoom: room._id,
+        temporaryUsername,
+        isLoggedIn: false,
+        status: { $ne: "completed" }, // Không lấy participant đã hoàn thành
+      };
+    } else {
+      throw new Error("Thiếu thông tin người dùng");
+    }
 
-    participant = await Participant.findOne(participantQuery)
-      .populate("remainingQuestions")
-      .populate("answeredQuestions.questionId");
+    // Tìm participant và populate submissions
+    participant = await Participant.findOne(participantQuery).populate({
+      path: "answeredQuestions.submissionId",
+      model: "Submission",
+      select: "answer answerId isCorrect score status",
+    });
+
+    // Nếu không tìm thấy participant hoạt động, kiểm tra xem có participant cũ không
+    if (!participant) {
+      const oldParticipant = await Participant.findOne({
+        quizRoom: room._id,
+        $or: [{ user: user?._id }, { temporaryUsername, isLoggedIn: false }],
+        status: "completed",
+      });
+
+      if (oldParticipant) {
+        // Nếu có participant cũ đã hoàn thành, tạo participant mới
+        console.log("Found completed participant, creating new one");
+      }
+    }
 
     if (participant) {
       console.log("Found existing participant:", {
         participantId: participant._id,
         remainingQuestions: participant.remainingQuestions?.length,
         answeredQuestions: participant.answeredQuestions?.length,
-        userId: participant.user,
       });
 
-      // Đảm bảo chúng ta có câu hỏi để trả về
-      const questions = [
-        ...participant.remainingQuestions,
-        ...(participant.answeredQuestions || []).map((a) => a.questionId),
-      ];
+      // Cập nhật thông tin kết nối mới
+      participant.connectionId = socket.id;
+      participant.lastActive = new Date();
+      participant.deviceInfo = deviceInfo;
 
-      console.log("Returning existing questions:", {
-        total: questions.length,
-        remaining: participant.remainingQuestions.length,
-        answered: participant.answeredQuestions.length,
+      // Lấy submissions hiện có
+      const submissions = await Submission.find({
+        participant: participant._id,
+      }).sort({ createdAt: -1 });
+
+      // Tạo map câu hỏi đã trả lời và trạng thái
+      const questionAnswerMap = new Map();
+      submissions.forEach((sub) => {
+        if (
+          !questionAnswerMap.has(sub.question.toString()) ||
+          sub.status === "final"
+        ) {
+          questionAnswerMap.set(sub.question.toString(), {
+            answerId: sub.answerId,
+            isCorrect: sub.isCorrect,
+            score: sub.score,
+            status: sub.status,
+          });
+        }
+      });
+
+      // Phân loại câu hỏi thành remaining và answered dựa trên submissions
+      const remainingQuestions = room.questionOrder.filter((q) => {
+        const answer = questionAnswerMap.get(q._id.toString());
+        return !answer || answer.status !== "final";
+      });
+
+      // Cập nhật remainingQuestions của participant
+      participant.remainingQuestions = remainingQuestions.map((q) => q._id);
+      await participant.save();
+
+      // Format câu hỏi để trả về
+      const formattedQuestions = remainingQuestions.map((q) => {
+        // Lấy submission cho câu hỏi này nếu có
+        const answer = questionAnswerMap.get(q._id.toString());
+
+        return {
+          _id: q._id,
+          questionText: q.questionText,
+          questionType: q.questionType,
+          timePerQuestion: q.timePerQuestion,
+          scorePerQuestion: q.scorePerQuestion,
+          difficulty: q.difficulty,
+          options:
+            q.questionType === "multipleChoices" ||
+            q.questionType === "dropdown"
+              ? q.answers.map((a) => ({
+                  _id: a._id,
+                  text: a.text,
+                  isCorrect: false, // Hide correct answers
+                }))
+              : q.options || [],
+          dragDropPairs: q.dragDropPairs || [],
+          answers:
+            q.answers?.map((a) => ({
+              _id: a._id,
+              text: a.text,
+              isCorrect: false, // Hide correct answers
+            })) || [],
+          selectedAnswerId: answer?.answerId || null, // Thêm selectedAnswerId
+          submission: answer
+            ? {
+                isCorrect: answer.isCorrect,
+                score: answer.score,
+                status: answer.status,
+              }
+            : null,
+        };
       });
 
       return {
         success: true,
         participant,
-        remainingQuestions: questions.map((q) => _formatQuestion(q)),
-        answeredQuestions: participant.answeredQuestions.map(
-          (a) => a.questionId
-        ),
+        remainingQuestions: formattedQuestions,
+        answeredQuestions: participant.answeredQuestions,
         endTime: room.endTime,
         timeRemaining: room.timeRemaining,
         progress: {
           answered: participant.answeredQuestions.length,
-          total: questions.length,
+          total: room.questionOrder.length,
+          score: participant.score || 0,
         },
+        submissions: Array.from(questionAnswerMap.entries()).map(
+          ([questionId, data]) => ({
+            questionId,
+            ...data,
+          })
+        ),
       };
     }
 
-    console.log("No existing participant found, creating new one...");
+    // Nếu không tìm thấy participant, tạo mới
+    console.log("Creating new participant");
 
-    // Nếu chưa tham gia, tạo bộ câu hỏi mới
-    if (
-      quiz.isExam &&
-      (!quiz.questionBankQueries || quiz.questionBankQueries.length === 0)
-    ) {
-      console.log("Quiz has no question bank queries");
-      throw new Error("Quiz không có tiêu chí ngân hàng câu hỏi");
-    }
-
-    const allQuestions = [];
-    console.log("Processing question bank queries:", quiz.questionBankQueries);
-
-    for (const criteria of quiz.questionBankQueries) {
-      const { questionBankId, difficulty, limit } = criteria;
-      console.log("Processing criteria:", {
-        bankId: questionBankId,
-        difficulty,
-        limit,
-      });
-
-      const filter = {
-        examId: new mongoose.Types.ObjectId(questionBankId.toString()),
-      };
-      if (Array.isArray(difficulty) && difficulty.length > 0) {
-        filter.difficulty = { $in: difficulty };
-      }
-
-      const matched = await Question.find(filter);
-      console.log("Matched questions:", matched);
-      console.log(
-        `Found ${matched.length} matching questions for bank ${questionBankId}`
-      );
-
-      const shuffled = matched.sort(() => 0.5 - Math.random());
-      const selected = shuffled.slice(0, limit);
-      console.log(
-        `Selected ${selected.length} questions from bank ${questionBankId}`
-      );
-
-      allQuestions.push(...selected);
-    }
-
-    const questions = allQuestions.sort(() => 0.5 - Math.random());
-    console.log(`Final question set has ${questions.length} questions`);
-
-    // Tạo participant mới với bộ câu hỏi đã trộn
     const newParticipant = {
       quizRoom: room._id,
       user: user?._id,
@@ -184,40 +236,58 @@ async function joinRoom(socket, data) {
       isLoggedIn: !!user,
       deviceInfo,
       connectionId: socket.id,
-      remainingQuestions: questions.map((q) => q._id),
+      remainingQuestions: room.questionOrder.map((q) => q._id),
       answeredQuestions: [],
+      score: 0,
+      status: "active", // Thêm trạng thái mặc định
     };
-
-    console.log("Creating new participant:", {
-      userId: newParticipant.user,
-      questionCount: newParticipant.remainingQuestions.length,
-    });
 
     participant = await Participant.create(newParticipant);
 
-    // Đảm bảo người chơi nằm trong danh sách participants của room
+    // Thêm participant vào room nếu chưa có
     if (!room.participants.includes(participant._id)) {
-      console.log("Adding participant to room's participant list");
       room.participants.push(participant._id);
       await room.save();
     }
 
-    console.log("Successfully created new participant:", {
-      participantId: participant._id,
-      questionCount: questions.length,
-    });
+    // Format câu hỏi cho participant mới
+    const formattedQuestions = room.questionOrder.map((q) => ({
+      _id: q._id,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      timePerQuestion: q.timePerQuestion,
+      scorePerQuestion: q.scorePerQuestion,
+      difficulty: q.difficulty,
+      options:
+        q.questionType === "multipleChoices" || q.questionType === "dropdown"
+          ? q.answers.map((a) => ({
+              _id: a._id,
+              text: a.text,
+              isCorrect: false,
+            }))
+          : q.options || [],
+      dragDropPairs: q.dragDropPairs || [],
+      answers:
+        q.answers?.map((a) => ({
+          _id: a._id,
+          text: a.text,
+          isCorrect: false,
+        })) || [],
+    }));
 
     return {
       success: true,
       participant,
-      remainingQuestions: questions.map((q) => _formatQuestion(q)),
+      remainingQuestions: formattedQuestions,
       answeredQuestions: [],
       endTime: room.endTime,
       timeRemaining: room.timeRemaining,
       progress: {
         answered: 0,
-        total: questions.length,
+        total: formattedQuestions.length,
+        score: 0,
       },
+      submissions: [],
     };
   } catch (error) {
     console.error("Error in joinRoom:", error);
@@ -332,117 +402,194 @@ export const getParticipantStatusByUserId = async (req, res) => {
     const { userId } = req.params;
     const { roomId } = req.query;
 
-    if (!userId || !roomId) {
-      return res.status(400).json({
-        success: false,
-        message: "Both userId and roomId are required",
-      });
-    }
-
     console.log(
       `Getting participant status for user ${userId} in room ${roomId}`
     );
 
+    // Lấy thông tin room và câu hỏi
+    const room = await QuizRoom.findById(roomId).populate("questionOrder");
+    if (!room) {
+      console.log("Room not found");
+      return res.status(404).json({
+        success: false,
+        message: "Room not found",
+      });
+    }
+
+    console.log("Room found:", {
+      roomId: room._id,
+      questionCount: room.questionOrder?.length,
+      status: room.status,
+    });
+
+    // Tìm participant và populate submissions
     const participant = await Participant.findOne({
       quizRoom: roomId,
       user: userId,
-    })
-      .populate({
-        path: "remainingQuestions",
-        model: "Question",
-        select:
-          "_id questionText questionType timePerQuestion scorePerQuestion difficulty options dragDropPairs answers",
-      })
-      .populate({
-        path: "answeredQuestions.questionId",
-        model: "Question",
-        select:
-          "_id questionText questionType timePerQuestion scorePerQuestion difficulty options dragDropPairs answers",
-      });
+    }).populate({
+      path: "answeredQuestions.submissionId",
+      model: "Submission",
+      select: "answer answerId isCorrect score status",
+    });
 
     if (!participant) {
+      console.log("Participant not found");
       return res.status(404).json({
         success: false,
         message: "Participant not found",
       });
     }
 
-    console.log("Found participant with questions:", {
+    // Lấy tất cả submissions của participant
+    const submissions = await Submission.find({
+      participant: participant._id,
+    }).sort({ createdAt: -1 });
+
+    // Tạo map câu hỏi đã trả lời và trạng thái
+    const questionAnswerMap = new Map();
+    submissions.forEach((sub) => {
+      if (
+        !questionAnswerMap.has(sub.question.toString()) ||
+        sub.status === "final"
+      ) {
+        questionAnswerMap.set(sub.question.toString(), {
+          answerId: sub.answerId,
+          isCorrect: sub.isCorrect,
+          score: sub.score,
+          status: sub.status,
+        });
+      }
+    });
+
+    console.log("Participant found:", {
+      participantId: participant._id,
       remainingCount: participant.remainingQuestions?.length,
       answeredCount: participant.answeredQuestions?.length,
-      sampleQuestion: JSON.stringify(
-        participant.remainingQuestions[0],
-        null,
-        2
-      ),
+      submissionCount: submissions.length,
     });
 
-    // Combine remaining and answered questions to maintain order
-    const allQuestions = [
-      ...participant.remainingQuestions,
-      ...(participant.answeredQuestions || []).map((a) => a.questionId),
-    ].filter((q) => q); // Filter out any null/undefined questions
+    // Lấy chi tiết câu hỏi từ questionOrder của room
+    const questions = await Question.find({
+      _id: { $in: room.questionOrder },
+    });
 
-    // Format all questions to hide answers
-    const formattedQuestions = allQuestions
-      .map((q) => {
-        if (!q) {
-          console.warn("Encountered null/undefined question while formatting");
-          return null;
-        }
+    console.log(
+      `Retrieved ${questions.length} questions from room's questionOrder`
+    );
 
-        // For multiple choice questions, use answers array as options
-        let options = [];
-        if (
-          q.questionType === "multipleChoices" ||
-          q.questionType === "dropdown"
-        ) {
-          options = q.answers.map((answer) => ({
-            _id: answer._id,
-            text: answer.text,
-            isCorrect: answer.isCorrect, // Keep isCorrect for answer validation
-          }));
-        } else {
-          options = q.options || [];
-        }
+    // Phân loại câu hỏi dựa trên submissions
+    const remainingQuestions = questions.filter((q) => {
+      const answer = questionAnswerMap.get(q._id.toString());
+      return !answer || answer.status !== "final";
+    });
 
-        const formatted = {
-          _id: q._id,
-          questionText: q.questionText,
-          questionType: q.questionType,
-          timePerQuestion: q.timePerQuestion,
-          scorePerQuestion: q.scorePerQuestion,
-          difficulty: q.difficulty,
-          options: options,
-          dragDropPairs: q.dragDropPairs || [],
-          answers:
-            q.answers?.map((a) => ({
-              _id: a._id,
-              text: a.text,
-              isCorrect: a.isCorrect, // Keep isCorrect for answer validation
-            })) || [],
-        };
+    // Format câu hỏi để trả về
+    const formattedQuestions = remainingQuestions.map((q) => {
+      // Lấy submission cho câu hỏi này nếu có
+      const answer = questionAnswerMap.get(q._id.toString());
 
-        return formatted;
+      return {
+        _id: q._id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        timePerQuestion: q.timePerQuestion,
+        scorePerQuestion: q.scorePerQuestion,
+        difficulty: q.difficulty,
+        options:
+          q.questionType === "multipleChoices" || q.questionType === "dropdown"
+            ? q.answers.map((a) => ({
+                _id: a._id,
+                text: a.text,
+                isCorrect: false, // Hide correct answers
+              }))
+            : q.options || [],
+        dragDropPairs: q.dragDropPairs || [],
+        answers:
+          q.answers?.map((a) => ({
+            _id: a._id,
+            text: a.text,
+            isCorrect: false, // Hide correct answers
+          })) || [],
+        selectedAnswerId: answer?.answerId || null, // Thêm selectedAnswerId
+        submission: answer
+          ? {
+              isCorrect: answer.isCorrect,
+              score: answer.score,
+              status: answer.status,
+            }
+          : null,
+      };
+    });
+
+    // Format answered questions với submission data
+    const formattedAnsweredQuestions = participant.answeredQuestions
+      .filter((aq) => {
+        const submission = questionAnswerMap.get(aq.questionId.toString());
+        return submission && submission.status === "final";
       })
-      .filter((q) => q); // Remove any null results
+      .map((aq) => {
+        const submission = questionAnswerMap.get(aq.questionId.toString());
+        const question = questions.find(
+          (q) => q._id.toString() === aq.questionId.toString()
+        );
 
-    console.log("Formatted questions sample:", {
-      count: formattedQuestions.length,
-      firstQuestion: JSON.stringify(formattedQuestions[0], null, 2),
+        return {
+          questionId: aq.questionId,
+          submissionId: aq.submissionId,
+          answerId: submission.answerId,
+          isCorrect: submission.isCorrect,
+          score: submission.score,
+          questionData: question
+            ? {
+                questionText: question.questionText,
+                questionType: question.questionType,
+                options:
+                  question.questionType === "multipleChoices" ||
+                  question.questionType === "dropdown"
+                    ? question.answers.map((a) => ({
+                        _id: a._id,
+                        text: a.text,
+                        isCorrect: false,
+                      }))
+                    : question.options || [],
+                answers:
+                  question.answers?.map((a) => ({
+                    _id: a._id,
+                    text: a.text,
+                    isCorrect: false,
+                  })) || [],
+              }
+            : null,
+        };
+      });
+
+    console.log("Question categorization:", {
+      total: questions.length,
+      remaining: formattedQuestions.length,
+      answered: formattedAnsweredQuestions.length,
+      submissions: submissions.length,
     });
+
+    // Cập nhật remainingQuestions của participant
+    participant.remainingQuestions = remainingQuestions.map((q) => q._id);
+    await participant.save();
+
+    // Tính lại tổng điểm từ submissions
+    const totalScore = submissions
+      .filter((s) => s.status === "final")
+      .reduce((sum, s) => sum + (s.score || 0), 0);
 
     return res.json({
       success: true,
       data: {
         remainingQuestions: formattedQuestions,
-        answeredQuestions: participant.answeredQuestions.map(
-          (a) => a.questionId
-        ),
+        answeredQuestions: formattedAnsweredQuestions,
         progress: {
-          answered: participant.answeredQuestions.length,
-          total: allQuestions.length,
+          answered: formattedAnsweredQuestions.length,
+          total: questions.length,
+          score: totalScore,
         },
+        isCompleted: formattedAnsweredQuestions.length === questions.length,
       },
     });
   } catch (error) {

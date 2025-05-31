@@ -197,7 +197,14 @@ async function syncSubmissions(participantId) {
 // Add new submitAnswerRoom function
 async function submitAnswerRoom(socket, data) {
   try {
-    const { userId, roomId, questionId, answerId, clientTimestamp } = data;
+    const {
+      userId,
+      roomId,
+      questionId,
+      answerId,
+      clientTimestamp,
+      isLastQuestion,
+    } = data;
 
     console.log("Processing answer submission:", {
       userId,
@@ -205,111 +212,159 @@ async function submitAnswerRoom(socket, data) {
       questionId,
       answerId,
       clientTimestamp,
+      isLastQuestion,
     });
 
-    // Find participant by userId and roomId
+    // Tìm participant hiện có
     const participant = await Participant.findOne({
       user: userId,
       quizRoom: roomId,
-    })
-      .populate("quizRoom")
-      .populate({
-        path: "remainingQuestions",
-        select:
-          "_id questionText questionType answers options difficulty scorePerQuestion",
-      });
+    }).populate("quizRoom");
 
     if (!participant) {
       throw new Error("Không tìm thấy thông tin người tham gia");
     }
 
-    console.log("Found participant:", {
-      participantId: participant._id,
-      remainingQuestions: participant.remainingQuestions?.length,
+    // Cập nhật thời gian hoạt động
+    participant.lastActive = new Date();
+
+    // Tìm submission hiện có hoặc tạo mới
+    let submission = await Submission.findOne({
+      participant: participant._id,
+      question: questionId,
     });
 
-    // Kiểm tra câu hỏi có trong remainingQuestions không
-    const question = participant.remainingQuestions.find(
-      (q) => q._id.toString() === questionId
-    );
+    // Tính điểm cho câu trả lời
+    const question = await Question.findById(questionId);
     if (!question) {
-      throw new Error("Câu hỏi không hợp lệ hoặc đã được làm");
+      throw new Error("Không tìm thấy câu hỏi");
     }
 
-    console.log("Found question:", {
-      questionId: question._id,
-      type: question.questionType,
-      answers: question.answers?.length,
-    });
-
-    // Tính điểm
     const { isCorrect, score } = await _evaluateAnswer(question, answerId);
 
-    console.log("Evaluated answer:", { isCorrect, score });
+    if (submission) {
+      // Nếu submission đã tồn tại, lưu vào lịch sử và cập nhật
+      submission.answerHistory.push({
+        answer: submission.answer,
+        answerId: submission.answerId,
+        isCorrect: submission.isCorrect,
+        score: submission.score,
+        timestamp: submission.updatedAt,
+      });
 
-    // Tạo submission
-    const submission = new Submission({
-      participant: participant._id,
-      quizRoom: participant.quizRoom._id,
-      question: question._id,
-      questionType: question.questionType,
-      answerId,
-      answer:
-        question.answers.find((a) => a._id.toString() === answerId)?.text || "",
-      isCorrect,
-      score,
-      timeToAnswer: (new Date() - new Date(clientTimestamp)) / 1000,
-      clientTimestamp,
-    });
+      submission.answer =
+        question.answers.find((a) => a._id.toString() === answerId)?.text || "";
+      submission.answerId = answerId;
+      submission.isCorrect = isCorrect;
+      submission.score = score;
+      submission.timeToAnswer = (new Date() - new Date(clientTimestamp)) / 1000;
+      submission.clientTimestamp = clientTimestamp;
+      submission.status = isLastQuestion ? "final" : "draft";
+    } else {
+      // Tạo submission mới
+      submission = new Submission({
+        participant: participant._id,
+        quizRoom: participant.quizRoom._id,
+        question: questionId,
+        questionType: question.questionType,
+        answerId,
+        answer:
+          question.answers.find((a) => a._id.toString() === answerId)?.text ||
+          "",
+        isCorrect,
+        score,
+        timeToAnswer: (new Date() - new Date(clientTimestamp)) / 1000,
+        clientTimestamp,
+        status: isLastQuestion ? "final" : "draft",
+      });
+    }
 
     await submission.save();
-    console.log("Saved submission:", submission._id);
+    console.log("Saved/Updated submission:", submission._id);
 
-    // Xóa câu hỏi khỏi remaining và thêm vào answered
-    participant.remainingQuestions = participant.remainingQuestions.filter(
-      (q) => q._id.toString() !== questionId
+    // Cập nhật participant
+    const answerIndex = participant.answeredQuestions.findIndex(
+      (aq) => aq.questionId.toString() === questionId
     );
 
-    participant.answeredQuestions.push({
-      questionId: question._id,
-      submissionId: submission._id,
-      answerId: answerId,
+    if (answerIndex >= 0) {
+      // Cập nhật câu trả lời hiện có
+      participant.answeredQuestions[answerIndex] = {
+        questionId: question._id,
+        submissionId: submission._id,
+        answerId: answerId,
+      };
+    } else {
+      // Thêm câu trả lời mới
+      participant.answeredQuestions.push({
+        questionId: question._id,
+        submissionId: submission._id,
+        answerId: answerId,
+      });
+    }
+
+    // Chỉ cập nhật remainingQuestions khi là submission cuối cùng
+    if (isLastQuestion) {
+      participant.remainingQuestions = [];
+    }
+
+    // Tính lại tổng điểm từ tất cả submissions
+    const allSubmissions = await Submission.find({
+      participant: participant._id,
+      status: isLastQuestion ? "final" : { $in: ["draft", "final"] },
     });
 
-    participant.score += score;
-    participant.lastActive = new Date();
+    participant.score = allSubmissions.reduce(
+      (total, sub) => total + (sub.score || 0),
+      0
+    );
+    console.log("Updated participant score:", participant.score);
+
     await participant.save();
 
-    // Lấy danh sách câu hỏi còn lại với đầy đủ thông tin
-    const remainingQuestions = participant.remainingQuestions.map((q) => ({
-      _id: q._id,
-      questionText: q.questionText,
-      questionType: q.questionType,
-      options: q.options,
-      difficulty: q.difficulty,
-      answers: q.answers.map((a) => ({
-        _id: a._id,
-        text: a.text,
-        isCorrect: false, // Hide correct answers
-      })),
-    }));
+    // Lấy tất cả câu hỏi của phòng thi
+    const allQuestions = await Question.find({
+      _id: { $in: [...participant.remainingQuestions] },
+    });
+
+    // Format câu hỏi với đáp án đã chọn
+    const formattedQuestions = allQuestions.map((q) => {
+      const answeredQuestion = participant.answeredQuestions.find(
+        (aq) => aq.questionId.toString() === q._id.toString()
+      );
+
+      return {
+        _id: q._id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        difficulty: q.difficulty,
+        answers: q.answers.map((a) => ({
+          _id: a._id,
+          text: a.text,
+          isCorrect: false, // Hide correct answers
+        })),
+        selectedAnswerId: answeredQuestion?.answerId || null,
+      };
+    });
 
     const updateData = {
-      remaining: remainingQuestions,
+      remaining: formattedQuestions,
       answered: participant.answeredQuestions.map((aq) => ({
         questionId: aq.questionId,
         answerId: aq.answerId,
       })),
       progress: {
         answered: participant.answeredQuestions.length,
-        total: participant.answeredQuestions.length + remainingQuestions.length,
+        total: formattedQuestions.length,
         score: participant.score,
       },
-      currentQuestion: remainingQuestions[0] || null,
+      currentQuestion: formattedQuestions[0] || null,
       lastSubmission: {
         questionId,
         isCorrect,
         score,
+        isLastQuestion,
       },
     };
 
@@ -329,11 +384,21 @@ async function submitAnswerRoom(socket, data) {
   }
 }
 
-// Add saveParticipationResult function
+// Hàm tính lại điểm của participant
+async function recalculateParticipantScore(participantId) {
+  const submissions = await Submission.find({
+    participant: participantId,
+    status: "final",
+  });
+
+  return submissions.reduce((total, sub) => total + (sub.score || 0), 0);
+}
+
+// Hàm lưu kết quả cuối cùng
 async function saveParticipationResult(req, res) {
   try {
-    console.log("Received participation data:", req.body);
-    const { roomId, userId, score, answers, stats } = req.body;
+    console.log("Saving final participation result:", req.body);
+    const { roomId, userId } = req.body;
 
     if (!roomId || !userId) {
       return res.status(400).json({
@@ -342,47 +407,43 @@ async function saveParticipationResult(req, res) {
       });
     }
 
-    // Find participant
+    // Tìm participant hiện có
     const participant = await Participant.findOne({
       user: userId,
       quizRoom: roomId,
+      status: "active", // Chỉ cập nhật participant đang hoạt động
     });
 
     if (!participant) {
-      console.log("Participant not found for:", { userId, roomId });
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy thông tin người tham gia",
+        message:
+          "Không tìm thấy thông tin người tham gia hoặc bài thi đã hoàn thành",
       });
     }
 
-    console.log("Found participant:", participant._id);
+    // Đánh dấu tất cả submissions là final
+    await Submission.updateMany(
+      { participant: participant._id, status: "draft" },
+      { status: "final" }
+    );
 
-    // Update participant's score and stats
-    participant.score = score;
-    participant.finalAnswers = answers;
-    participant.stats = stats;
+    // Tính lại điểm cuối cùng
+    participant.score = await recalculateParticipantScore(participant._id);
     participant.completedAt = new Date();
-    participant.status = "completed";
+    participant.status = "completed"; // Cập nhật trạng thái thành completed
 
     await participant.save();
-    console.log("Saved participant results:", {
-      participantId: participant._id,
-      score,
-      stats,
-    });
 
-    // Return success response
     return res.json({
       success: true,
       data: {
         participantId: participant._id,
-        score,
-        stats,
+        score: participant.score,
       },
     });
   } catch (error) {
-    console.error("Error saving participation result:", error);
+    console.error("Error saving final result:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Lỗi khi lưu kết quả tham gia",
@@ -408,6 +469,80 @@ export const getSubmissionsByParticipant = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch submissions",
+    });
+  }
+};
+
+// Lấy kết quả bài thi
+export const getQuizResults = async (req, res) => {
+  try {
+    const { roomId, userId } = req.query;
+
+    if (!roomId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing roomId or userId",
+      });
+    }
+
+    // Tìm participant
+    const participant = await Participant.findOne({
+      quizRoom: roomId,
+      user: userId,
+    }).populate("answeredQuestions.submissionId");
+
+    if (!participant) {
+      return res.status(404).json({
+        success: false,
+        message: "Participant not found",
+      });
+    }
+
+    // Lấy tất cả submissions của participant
+    const submissions = await Submission.find({
+      participant: participant._id,
+      quizRoom: roomId,
+    }).populate("question");
+
+    // Tính toán thống kê
+    const totalQuestions =
+      participant.answeredQuestions.length +
+      participant.remainingQuestions.length;
+    const answeredQuestions = submissions.length;
+    const correctAnswers = submissions.filter((s) => s.isCorrect).length;
+    const incorrectAnswers = answeredQuestions - correctAnswers;
+    const correctPercentage = Math.round(
+      (correctAnswers / totalQuestions) * 100
+    );
+
+    // Format kết quả từng câu
+    const answers = submissions.map((submission) => ({
+      questionId: submission.question._id,
+      userAnswer: submission.answer,
+      correctAnswer:
+        submission.question.answers.find((a) => a.isCorrect)?.text || "",
+      isCorrect: submission.isCorrect,
+      question: submission.question.questionText,
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        score: participant.score,
+        totalQuestions,
+        stats: {
+          correctAnswers,
+          incorrectAnswers,
+          correctPercentage,
+        },
+        answers,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting quiz results:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

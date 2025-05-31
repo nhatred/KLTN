@@ -14,6 +14,7 @@ import {
   getQuizSession,
   completeQuizSession,
   getUserExams,
+  getQuizDetails,
 } from "../controllers/quizController.js";
 
 const router = express.Router();
@@ -52,5 +53,7 @@ router.put(
   updateQuiz
 );
 router.delete("/:id", deleteQuiz);
+// Lấy thông tin một quizz để tạo phòng
+router.get("/quizuser/:id", getQuizDetails);
 
 export default router;

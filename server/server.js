@@ -32,6 +32,9 @@ app.use(cors());
 app.use(clerkMiddleware());
 app.use(express.json());
 
+// Make io available to our app
+app.set("io", io);
+
 app.get("/", (req, res) => {
   res.send("API working");
 });

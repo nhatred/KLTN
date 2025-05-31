@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
+import { type } from "os";
 
 const quizRoomSchema = new mongoose.Schema(
   {
@@ -13,6 +14,7 @@ const quizRoomSchema = new mongoose.Schema(
           `${props.value} không phải mã phòng hợp lệ (6 ký tự A-Z, 0-9)`,
       },
     },
+    roomName: { type: String, require: true },
     quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
     host: { type: String, ref: "User", required: true },
     startTime: { type: Date },
@@ -83,8 +85,8 @@ quizRoomSchema.virtual("timeRemaining").get(function () {
 //   next();
 // });
 // Đã thay đổi như dưới
-quizRoomSchema.pre('save', function(next) {
-  if ((this.isModified('startTime') || this.isModified('durationMinutes'))) {
+quizRoomSchema.pre("save", function (next) {
+  if (this.isModified("startTime") || this.isModified("durationMinutes")) {
     if (this.startTime && this.durationMinutes) {
       this.endTime = new Date(
         this.startTime.getTime() + this.durationMinutes * 60000
@@ -163,6 +165,56 @@ quizRoomSchema.methods.startRoom = async function () {
     throw new Error(`Không thể bắt đầu phòng ở trạng thái ${this.status}`);
   }
 
+  // Populate quiz data first
+  await this.populate({
+    path: "quiz",
+    select: "questions questionBankQueries isExam",
+  });
+
+  console.log("Quiz data:", {
+    isExam: this.quiz.isExam,
+    hasQuestions: this.quiz.questions?.length > 0,
+    hasQueries: this.quiz.questionBankQueries?.length > 0,
+  });
+
+  // Generate questions if not already done
+  if (!this.questionOrder || this.questionOrder.length === 0) {
+    if (this.quiz.isExam && this.quiz.questionBankQueries?.length > 0) {
+      console.log("Generating questions from question bank");
+      const allQuestions = [];
+      for (const criteria of this.quiz.questionBankQueries) {
+        const { examSetId, difficulty, limit } = criteria;
+        console.log("Processing query:", { examSetId, difficulty, limit });
+
+        const filter = { examSetId: new mongoose.Types.ObjectId(examSetId) };
+        if (difficulty) filter.difficulty = difficulty;
+
+        const questions = await Question.find(filter);
+        console.log(
+          `Found ${questions.length} matching questions for bank ${examSetId}`
+        );
+
+        const shuffled = questions.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, limit);
+        allQuestions.push(...selected);
+      }
+      this.questionOrder = allQuestions.map((q) => q._id);
+      console.log(
+        `Generated ${this.questionOrder.length} questions from banks`
+      );
+    } else if (this.quiz.questions?.length > 0) {
+      console.log("Using questions directly from quiz");
+      this.questionOrder = this.quiz.questions;
+      console.log(`Added ${this.questionOrder.length} questions from quiz`);
+    } else {
+      throw new Error("Không có câu hỏi cho phòng thi");
+    }
+  }
+
+  if (!this.questionOrder || this.questionOrder.length === 0) {
+    throw new Error("Không thể tạo câu hỏi cho phòng thi");
+  }
+
   const now = new Date();
   this.startTime = now;
   this.endTime = new Date(now.getTime() + this.durationMinutes * 60000);
@@ -175,16 +227,15 @@ quizRoomSchema.methods.startRoom = async function () {
     isActive: this.isActive,
     startTime: this.startTime,
     endTime: this.endTime,
+    questionCount: this.questionOrder.length,
   });
 
   const savedRoom = await this.save();
-
-  console.log("Room state after save:", {
-    status: savedRoom.status,
-    isActive: savedRoom.isActive,
-    startTime: savedRoom.startTime,
-    endTime: savedRoom.endTime,
-  });
+  console.log(
+    "Room saved successfully with",
+    savedRoom.questionOrder.length,
+    "questions"
+  );
 
   return savedRoom;
 };

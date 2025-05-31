@@ -198,100 +198,98 @@ export default function QuizResults({
         >
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center justify-between w-full py-4 px-6 bg-rgba rounded-xl transition mb-4 hover:bg-rgba/70"
+            className="flex items-center gap-2 text-orange hover:text-amber-500 transition-colors mb-4"
           >
-            <div className="flex items-center">
-              <h3 className="text-xl font-semibold text-background">
-                Chi tiết câu trả lời
-              </h3>
-              <span className="ml-3 bg-orange px-3 py-1 rounded-lg text-sm text-darkblue font-medium">
-                {answers.length} câu hỏi
-              </span>
-            </div>
+            <span className="font-medium">Chi tiết bài làm</span>
             <HugeiconsIcon
               icon={showDetails ? ArrowUp01Icon : ArrowDown01Icon}
-              size={24}
-              className="text-orange"
+              size={20}
             />
           </button>
 
           {showDetails && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-4 max-h-[40vh] overflow-y-auto pb-2 pr-2 custom-scrollbar"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-6"
             >
               {answers.map((answer, index) => {
                 const question = questions.find(
                   (q) => q._id === answer.questionId
                 );
-                const allAnswers = question?.answers || [];
+                if (!question) return null;
 
                 return (
                   <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`p-5 rounded-xl border ${
-                      answer.isCorrect
-                        ? "bg-green-950/50 border-green-700/50"
-                        : "bg-red-950/50 border-red-700/50"
-                    }`}
+                    key={answer.questionId}
+                    variants={itemVariants}
+                    className="bg-rgba p-6 rounded-xl shadow-lg"
                   >
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="grid grid-cols-12 items-center gap-3">
-                        <span className="bg-orange text-darkblue text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center">
-                          {index + 1}
-                        </span>
-
-                        <p className="text-cyan-100 text-lg col-span-10">
-                          {question?.questionText || "Câu hỏi không có sẵn"}
-                        </p>
-                      </div>
-                      {answer.isCorrect ? (
-                        <div className="flex items-center gap-2 text-emerald-400">
-                          <HugeiconsIcon icon={CheckmarkCircleIcon} size={24} />
-                          <span className="font-medium">Đúng</span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-gray-400">Câu {index + 1}</span>
+                          {answer.isCorrect ? (
+                            <HugeiconsIcon
+                              icon={CheckmarkCircleIcon}
+                              size={20}
+                              className="text-green-500"
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={CloseCircleIcon}
+                              size={20}
+                              className="text-red-500"
+                            />
+                          )}
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-rose-400">
-                          <HugeiconsIcon icon={CloseCircleIcon} size={24} />
-                          <span className="font-medium">Sai</span>
-                        </div>
-                      )}
-                    </div>
+                        <h3 className="text-lg font-medium text-white mb-4">
+                          {question.questionText}
+                        </h3>
 
-                    <div className="space-y-3 bg-black/20 p-4 rounded-lg">
-                      {allAnswers.map((ans, ansIndex) => (
-                        <div
-                          key={ansIndex}
-                          className={`p-3 rounded-lg flex items-center justify-between ${
-                            ans.text === answer.userAnswer
-                              ? ans.isCorrect
-                                ? "bg-green-900/30 border border-green-500/30"
-                                : "bg-red-900/30 border border-red-500/30"
-                              : ans.isCorrect
-                              ? "bg-green-900/30 border border-green-500/30"
-                              : "bg-gray-800/30"
-                          }`}
-                        >
-                          <span className="text-gray-200">{ans.text}</span>
-                          <div className="flex items-center gap-2">
-                            {ans.text === answer.userAnswer && (
-                              <span className="text-sm text-gray-400">
-                                Câu trả lời của bạn
-                              </span>
-                            )}
-                            {ans.isCorrect && (
-                              <span className="text-sm text-emerald-400">
-                                Đáp án đúng
-                              </span>
-                            )}
+                        <div className="space-y-3">
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 min-w-[120px]">
+                              Đáp án của bạn:
+                            </span>
+                            <span
+                              className={`flex-1 ${
+                                answer.isCorrect
+                                  ? "text-green-500"
+                                  : "text-red-500"
+                              }`}
+                            >
+                              {answer.userAnswer || "Không có đáp án"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 min-w-[120px]">
+                              Đáp án đúng:
+                            </span>
+                            <span className="text-green-500 flex-1">
+                              {answer.correctAnswer}
+                            </span>
                           </div>
                         </div>
-                      ))}
+                      </div>
+
+                      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-rgba">
+                        {answer.isCorrect ? (
+                          <HugeiconsIcon
+                            icon={CheckmarkCircle02Icon}
+                            size={24}
+                            className="text-green-500"
+                          />
+                        ) : (
+                          <HugeiconsIcon
+                            icon={Cancel01Icon}
+                            size={24}
+                            className="text-red-500"
+                          />
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 );
@@ -300,26 +298,19 @@ export default function QuizResults({
           )}
         </motion.div>
 
-        {/* Action Buttons */}
+        {/* Back Button */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="flex justify-between"
+          className="flex justify-center"
         >
           <button
-            onClick={() => navigate("/dashboard/home")}
-            className="flex items-center px-5 py-3 bg-background text-darkblue rounded-xl font-medium hover:bg-gray-100 transition-colors"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-2 text-orange hover:text-amber-500 transition-colors"
           >
             <HugeiconsIcon icon={Backward01Icon} size={20} />
-            <span className="ml-2">Quay lại trang chủ</span>
-          </button>
-
-          <button
-            onClick={() => navigate("/dashboard/activity")}
-            className="px-6 py-3 bg-orange text-darkblue rounded-xl font-semibold hover:bg-amber-500 transition-colors"
-          >
-            Đến trang hoạt động
+            <span>Quay về trang chủ</span>
           </button>
         </motion.div>
       </motion.div>

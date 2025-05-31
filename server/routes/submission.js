@@ -4,6 +4,7 @@ import {
   syncSubmissions,
   saveParticipationResult,
   getSubmissionsByParticipant,
+  getQuizResults,
 } from "../controllers/submissionController.js";
 import { verifyToken } from "../middlewares/auth.js";
 
@@ -21,6 +22,9 @@ router.get(
   verifyToken,
   getSubmissionsByParticipant
 );
+
+// Lấy kết quả bài thi
+router.get("/results", verifyToken, getQuizResults);
 
 // Lấy bài nộp cụ thể
 // router.get('/:id', verifyToken,requireAuth, getSubmission);

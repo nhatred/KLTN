@@ -12,6 +12,7 @@ export interface Room {
     imageUrl: string;
   };
   roomCode: string;
+  roomName: string;
   createdAt: string;
   updatedAt: string;
   quiz: Quiz;

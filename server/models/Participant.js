@@ -46,7 +46,13 @@ const participantSchema = new mongoose.Schema(
     lastActive: { type: Date, default: Date.now },
     // Lưu thông tin thiết bị
     deviceInfo: { type: Object },
-    
+
+    // Trạng thái của participant
+    status: {
+      type: String,
+      enum: ["active", "completed", "abandoned"],
+      default: "active",
+    },
   },
   {
     timestamps: true,

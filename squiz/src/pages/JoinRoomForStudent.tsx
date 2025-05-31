@@ -52,6 +52,7 @@ interface Room {
   }>;
   durationMinutes: number;
   quiz?: any; // For backward compatibility
+  questionOrder: Question[];
 }
 
 interface Participant {
@@ -88,6 +89,7 @@ interface QuizResults {
     incorrectAnswers: number;
     correctPercentage: number;
   };
+  answers: Answer[];
 }
 
 interface ParticipantInfo {
@@ -119,27 +121,42 @@ interface ParticipantData {
   message?: string;
 }
 
+interface QuestionProgress {
+  answered: number;
+  total: number;
+  score: number;
+}
+
+interface AnsweredQuestion {
+  questionId: string;
+  answerId: string;
+}
+
+interface QuestionUpdateData {
+  remaining: Question[];
+  answered: AnsweredQuestion[];
+  progress: QuestionProgress;
+  currentQuestion: Question | null;
+  lastSubmission?: {
+    questionId: string;
+    isCorrect: boolean;
+    score: number;
+    isLastQuestion: boolean;
+  };
+}
+
 interface SubmissionResponse {
   success: boolean;
-  data?: {
-    remaining: Question[];
-    answered: Array<{
-      questionId: string;
-      answerId: string;
-    }>;
-    progress: {
-      answered: number;
-      total: number;
-      score: number;
-    };
-    currentQuestion: Question | null;
-    lastSubmission: {
-      questionId: string;
-      isCorrect: boolean;
-      score: number;
-    };
-  };
   message?: string;
+  data?: QuestionUpdateData;
+}
+
+interface QuizAnswer {
+  questionId: string;
+  userAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  question: string;
 }
 
 export default function JoinRoomForStudent() {
@@ -189,10 +206,16 @@ export default function JoinRoomForStudent() {
   });
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [remainingQuestions, setRemainingQuestions] = useState([]);
-  const [answeredQuestions, setAnsweredQuestions] = useState([]);
-  const [progress, setProgress] = useState({ answered: 0, total: 0 });
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [remainingQuestions, setRemainingQuestions] = useState<Question[]>([]);
+  const [answeredQuestions, setAnsweredQuestions] = useState<
+    AnsweredQuestion[]
+  >([]);
+  const [progress, setProgress] = useState<QuestionProgress>({
+    answered: 0,
+    total: 0,
+    score: 0,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [roomStatus, setRoomStatus] = useState("waiting");
   const [endTime, setEndTime] = useState<Date | null>(null);
@@ -588,7 +611,13 @@ export default function JoinRoomForStudent() {
 
   const handleConfirm = useCallback(async () => {
     try {
-      if (submitted) {
+      if (
+        quizResults &&
+        quizResults.answers &&
+        quizResults.answers.length > 0
+      ) {
+        alert("Bạn đã nộp bài thi này rồi!");
+        setShowConfirmModal(false);
         return;
       }
 
@@ -598,195 +627,166 @@ export default function JoinRoomForStudent() {
         );
       }
 
-      // Calculate start time and time spent
-      const startTime = new Date(room.startTime);
-      const endTime = new Date();
-      const timeSpentSeconds = Math.floor(
-        (endTime.getTime() - startTime.getTime()) / 1000
-      );
+      setIsSubmitting(true);
 
-      // Calculate results before submitting
-      const answersArray = questions.map((question) => {
-        const userAnswerId = selectedAnswers[question._id] || "";
-        const selectedAnswer = question.answers.find(
-          (a) => a._id === userAnswerId
+      // Gửi submission cho câu hỏi cuối cùng với isLastQuestion = true
+      const currentQuestion = questions[currentQuestionIndex];
+      const currentAnswerId = selectedAnswers[currentQuestion._id];
+
+      try {
+        // Trước khi nộp bài, gửi thông tin về tổng số câu hỏi thực tế
+        const token = await getToken();
+        const finalResponse = await fetch(
+          "http://localhost:5000/api/submission/participation",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              roomId: room._id,
+              userId: userId,
+              totalQuestions: questions.length, // Thêm thông tin về tổng số câu hỏi
+              answeredQuestions: Object.keys(selectedAnswers).length, // Thêm thông tin về số câu đã trả lời
+            }),
+          }
         );
-        const correctAnswer = question.answers.find((a) => a.isCorrect);
-        const isCorrect = selectedAnswer?._id === correctAnswer?._id;
 
-        return {
-          questionId: question._id,
-          userAnswer: selectedAnswer?.text || "",
-          correctAnswer: correctAnswer?.text || "",
-          isCorrect: isCorrect,
-          question: question.questionText,
-        };
-      });
-
-      const correctAnswers = answersArray.filter(
-        (answer) => answer.isCorrect
-      ).length;
-      const incorrectAnswers = answersArray.length - correctAnswers;
-      const correctPercentage = Math.round(
-        (correctAnswers / questions.length) * 100
-      );
-
-      // Prepare consistent result format for both immediate display and database
-      const results = {
-        participantId: userId,
-        quizRoom: {
-          _id: room._id,
-          name: room.quiz?.name || "Bài thi không tên",
-          roomCode: room.roomCode,
-          startTime: room.startTime,
-          durationMinutes: room.durationMinutes,
-          status: room.status,
-          quiz: {
-            _id: room.examSetId,
-            name: room.quiz?.name || "Bài thi không tên",
-            topic: room.quiz?.topic || "Chưa phân loại",
-            difficulty: room.quiz?.difficulty || "medium",
-          },
-        },
-        score: correctAnswers,
-        totalQuestions: questions.length,
-        joinedAt: startTime.toISOString(),
-        stats: {
-          totalQuestions: questions.length,
-          correctAnswers: correctAnswers,
-          incorrectAnswers: incorrectAnswers,
-          correctPercentage: correctPercentage,
-          timeSpent: timeSpentSeconds,
-        },
-        answers: answersArray,
-      };
-
-      // Set quiz results for immediate display
-      setQuizResults(results);
-      setSubmitted(true);
-
-      // First, save participation result with all answers at once
-      const token = await getToken();
-      const participationPayload = {
-        roomId: room._id,
-        userId: userId,
-        score: correctAnswers,
-        answers: answersArray,
-        stats: results.stats,
-        quizId: room.quiz._id,
-        type: room.quiz.isExam ? "exam" : "quiz",
-      };
-
-      console.log("Sending participation data:", participationPayload);
-
-      const participationResponse = await fetch(
-        "http://localhost:5000/api/submission/participation",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(participationPayload),
+        if (!finalResponse.ok) {
+          throw new Error("Failed to finalize submission");
         }
-      );
 
-      if (!participationResponse.ok) {
-        const errorData = await participationResponse.json();
-        console.error("Participation save error:", errorData);
-        throw new Error(errorData.message || "Không thể lưu kết quả tham gia");
-      }
+        const finalData = await finalResponse.json();
+        console.log("Final submission response:", finalData);
 
-      const participationData = await participationResponse.json();
-      console.log("Participation save success:", participationData);
+        // Fetch quiz results
+        const resultsResponse = await fetch(
+          `http://localhost:5000/api/submission/results?roomId=${room._id}&userId=${userId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${await getToken()}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-      // Then, save to quiz results
-      const quizResultsPayload = {
-        quizId: room.quiz._id,
-        userAnswers: answersArray.map((answer) => ({
-          questionId: answer.questionId,
-          userAnswer: answer.userAnswer,
-          isCorrect: answer.isCorrect,
-          score: 1,
-        })),
-        score: correctAnswers,
-        userId: userId,
-        username: user?.fullName || "Anonymous",
-        totalScore: questions.length,
-        deviceId: `${navigator.userAgent}_${new Date().getTime()}`,
-        type: room.quiz.isExam ? "exam" : "quiz",
-        metadata: {
-          roomId: room._id,
-          roomCode: room.roomCode,
-          startTime: room.startTime,
-          endTime: new Date().toISOString(),
-          durationMinutes: room.durationMinutes,
-          isExam: room.quiz.isExam,
-        },
-      };
+        if (resultsResponse.ok) {
+          const resultsData = await resultsResponse.json();
+          console.log("Quiz results:", resultsData);
 
-      console.log(
-        "Quiz results payload:",
-        JSON.stringify(quizResultsPayload, null, 2)
-      );
+          if (resultsData.success) {
+            // Đảm bảo totalQuestions khớp với số câu hỏi thực tế
+            const correctedResults = {
+              ...resultsData.data,
+              totalQuestions: questions.length,
+              stats: {
+                ...resultsData.data.stats,
+                totalQuestions: questions.length,
+                correctPercentage:
+                  (resultsData.data.stats.correctAnswers / questions.length) *
+                  100,
+              },
+            };
 
-      const resultResponse = await fetch(
-        "http://localhost:5000/api/quiz/results",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(quizResultsPayload),
+            // Cập nhật UI với kết quả đã được điều chỉnh
+            setSubmitted(true);
+            setQuizResults(correctedResults);
+
+            // Lưu kết quả đã điều chỉnh vào localStorage
+            localStorage.setItem(`quiz_submitted_${code}`, "true");
+            localStorage.setItem(
+              `quiz_results_${code}`,
+              JSON.stringify(correctedResults)
+            );
+
+            // Clear other localStorage items
+            localStorage.removeItem(`quiz_answers_${code}`);
+            localStorage.removeItem(`quiz_current_question_${code}`);
+            localStorage.removeItem(`quiz_progress_${code}`);
+
+            // Leave room
+            socket.emit("leaveRoom", {
+              roomId: room._id,
+              participantId: userId,
+            });
+          } else {
+            throw new Error("Failed to get quiz results");
+          }
+        } else {
+          throw new Error("Failed to fetch quiz results");
         }
-      );
-
-      if (!resultResponse.ok) {
-        const errorData = await resultResponse.json();
-        console.error("Quiz results save error details:", errorData);
-        throw new Error(errorData.message || "Không thể lưu kết quả bài thi");
+      } catch (error) {
+        console.error("Error in submission completion:", error);
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Có lỗi xảy ra khi nộp bài. Vui lòng thử lại."
+        );
+      } finally {
+        setIsSubmitting(false);
+        setShowConfirmModal(false);
       }
-
-      const resultData = await resultResponse.json();
-      console.log("Quiz results save success:", resultData);
-
-      // Clear saved answers and current question
-      localStorage.removeItem(`quiz_answers_${code}`);
-      localStorage.removeItem(`quiz_current_question_${code}`);
-
-      // Save submission state and results
-      localStorage.setItem(`quiz_submitted_${code}`, "true");
-      localStorage.setItem(`quiz_results_${code}`, JSON.stringify(results));
-
-      // Leave room
-      socket.emit("leaveRoom", {
-        roomId: room._id,
-        participantId: userId,
-      });
-
-      setShowConfirmModal(false);
     } catch (error) {
-      console.error("Error submitting answers:", error);
+      console.error("Error in handleConfirm:", error);
       alert(
         error instanceof Error
           ? error.message
           : "Có lỗi xảy ra khi nộp bài. Vui lòng thử lại."
       );
+      setIsSubmitting(false);
       setShowConfirmModal(false);
     }
   }, [
+    quizResults,
+    socket,
     room,
-    selectedAnswers,
     userId,
     user,
-    socket,
     questions,
+    currentQuestionIndex,
+    selectedAnswers,
     code,
-    submitted,
     getToken,
   ]);
 
+  // Khai báo handleTimeUp trước
+  const handleTimeUp = useCallback(async () => {
+    try {
+      if (submitted) return;
+
+      console.log("Time's up! Processing unanswered questions...");
+
+      // Đánh dấu tất cả câu hỏi chưa trả lời là sai
+      const unansweredQuestions = questions.filter(
+        (q) => !selectedAnswers[q._id]
+      );
+      console.log("Unanswered questions:", unansweredQuestions.length);
+
+      if (unansweredQuestions.length > 0) {
+        // Với mỗi câu chưa trả lời, chọn đáp án đầu tiên (sẽ được đánh là sai)
+        const newAnswers = { ...selectedAnswers };
+        unansweredQuestions.forEach((q) => {
+          if (q.answers && q.answers.length > 0) {
+            newAnswers[q._id] = q.answers[0]._id;
+          }
+        });
+
+        setSelectedAnswers(newAnswers);
+        localStorage.setItem(
+          `quiz_answers_${code}`,
+          JSON.stringify(newAnswers)
+        );
+      }
+
+      // Tự động kích hoạt nộp bài
+      await handleConfirm();
+    } catch (error) {
+      console.error("Error in handleTimeUp:", error);
+    }
+  }, [questions, selectedAnswers, submitted, code, handleConfirm]);
+
+  // Sau đó khai báo calculateTimeRemaining
   const calculateTimeRemaining = useCallback(() => {
     if (!room?.startTime) return;
 
@@ -804,11 +804,10 @@ export default function JoinRoomForStudent() {
       if (endTimeDifference <= 0) {
         setEndTimeRemaining("Phòng thi đã kết thúc");
         setShowQuestions(false);
-        // Auto submit when time runs out
+
+        // Xử lý hết giờ nếu chưa nộp bài
         if (!submitted) {
-          // Prevent multiple submissions
-          setSubmitted(true);
-          handleConfirm();
+          handleTimeUp();
         }
       } else {
         const hours = Math.floor(endTimeDifference / (1000 * 60 * 60));
@@ -838,40 +837,50 @@ export default function JoinRoomForStudent() {
 
     setTimeRemaining(`Phòng thi bắt đầu sau ${minutes} phút ${seconds} giây`);
     setEndTimeRemaining("");
-  }, [room, submitted, handleConfirm]);
+  }, [room, submitted, handleTimeUp]);
 
-  // Add new effect to handle auto-submit
-  useEffect(() => {
-    if (room?.status === "active" && !submitted && room.startTime) {
-      const endTime =
-        new Date(room.startTime).getTime() + room.durationMinutes * 60 * 1000;
-      const now = new Date().getTime();
-      const timeUntilEnd = endTime - now;
-
-      if (timeUntilEnd > 0) {
-        const timeoutId = setTimeout(() => {
-          if (!submitted) {
-            // Prevent multiple submissions
-            setSubmitted(true);
-            handleConfirm();
-          }
-        }, timeUntilEnd);
-        return () => clearTimeout(timeoutId);
-      }
-    }
-  }, [room, submitted, handleConfirm]);
-
+  // Cuối cùng là useEffect cho việc tính thời gian
   useEffect(() => {
     if (room?.status === "scheduled" || room?.status === "active") {
       calculateTimeRemaining();
-      timerRef.current = setInterval(calculateTimeRemaining, 1000);
+      timerRef.current = setInterval(() => {
+        const now = new Date().getTime();
+
+        if (room.startTime) {
+          const startTime = new Date(room.startTime).getTime();
+          const endTime = startTime + room.durationMinutes * 60 * 1000;
+          const timeLeft = endTime - now;
+
+          if (timeLeft <= 0 && !submitted) {
+            // Clear interval
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+            }
+
+            // Xử lý hết giờ
+            handleTimeUp();
+            return;
+          }
+
+          // Cập nhật hiển thị thời gian
+          calculateTimeRemaining();
+        }
+      }, 1000);
+
       return () => {
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
       };
     }
-  }, [room?.status, calculateTimeRemaining]);
+  }, [
+    room?.status,
+    calculateTimeRemaining,
+    room?.startTime,
+    room?.durationMinutes,
+    submitted,
+    handleTimeUp,
+  ]);
 
   // Update socket event handlers
   useEffect(() => {
@@ -910,6 +919,38 @@ export default function JoinRoomForStudent() {
           console.error("Error updating room data:", error);
         }
       }
+    });
+
+    // Add question update listener
+    socket.on("questionsUpdate", (data) => {
+      console.log("Received questions update:", data);
+
+      if (data.remaining) {
+        setQuestions(data.remaining);
+      }
+
+      if (data.answered) {
+        setAnsweredQuestions(data.answered);
+      }
+
+      if (data.progress) {
+        setProgress(data.progress);
+      }
+
+      // Lưu state vào localStorage
+      localStorage.setItem(
+        `quiz_progress_${code}`,
+        JSON.stringify(data.progress)
+      );
+      localStorage.setItem(
+        `quiz_answers_${code}`,
+        JSON.stringify(
+          data.answered.reduce((acc: any, curr: any) => {
+            acc[curr.questionId] = curr.answerId;
+            return acc;
+          }, {})
+        )
+      );
     });
 
     // Listen for participant left
@@ -953,6 +994,7 @@ export default function JoinRoomForStudent() {
       if (data.roomId === room._id) {
         try {
           const token = await getToken();
+          // First get updated room data
           const response = await fetch(
             `http://localhost:5000/api/quizRoom/code/${code}`,
             {
@@ -969,9 +1011,44 @@ export default function JoinRoomForStudent() {
               console.log("Room status updated:", updatedData.data);
               setRoom(updatedData.data);
 
-              // Update UI based on new status
+              // If room is now active, fetch participant questions
               if (updatedData.data.status === "active") {
-                setShowQuestions(true);
+                console.log("Room is now active, fetching questions...");
+                const participantResponse = await fetch(
+                  `http://localhost:5000/api/participant/status/${userId}?roomId=${updatedData.data._id}`,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      "Content-Type": "application/json",
+                    },
+                  }
+                );
+
+                if (participantResponse.ok) {
+                  const participantData = await participantResponse.json();
+                  console.log("Received participant data:", participantData);
+
+                  if (participantData.success && participantData.data) {
+                    console.log("Setting questions from participant data:", {
+                      questionCount:
+                        participantData.data.remainingQuestions?.length,
+                    });
+                    const remainingQuestions =
+                      participantData.data.remainingQuestions || [];
+                    setQuestions(remainingQuestions);
+                    setShowQuestions(true);
+                  } else {
+                    console.error(
+                      "Failed to get participant data:",
+                      participantData.message
+                    );
+                  }
+                } else {
+                  console.error(
+                    "Failed to fetch participant status:",
+                    participantResponse.statusText
+                  );
+                }
               } else if (updatedData.data.status === "completed") {
                 setShowQuestions(false);
                 if (!submitted) {
@@ -1006,9 +1083,52 @@ export default function JoinRoomForStudent() {
             console.log("Room status updated from polling:", updatedData.data);
             setRoom(updatedData.data);
 
-            // Update UI based on new status
+            // If room is now active, fetch participant questions
             if (updatedData.data.status === "active") {
-              setShowQuestions(true);
+              console.log(
+                "Room is now active, fetching questions from polling..."
+              );
+              const participantResponse = await fetch(
+                `http://localhost:5000/api/participant/status/${userId}?roomId=${updatedData.data._id}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+
+              if (participantResponse.ok) {
+                const participantData = await participantResponse.json();
+                console.log(
+                  "Received participant data from polling:",
+                  participantData
+                );
+
+                if (participantData.success && participantData.data) {
+                  console.log(
+                    "Setting questions from participant data (polling):",
+                    {
+                      questionCount:
+                        participantData.data.remainingQuestions?.length,
+                    }
+                  );
+                  const remainingQuestions =
+                    participantData.data.remainingQuestions || [];
+                  setQuestions(remainingQuestions);
+                  setShowQuestions(true);
+                } else {
+                  console.error(
+                    "Failed to get participant data from polling:",
+                    participantData.message
+                  );
+                }
+              } else {
+                console.error(
+                  "Failed to fetch participant status from polling:",
+                  participantResponse.statusText
+                );
+              }
             } else if (updatedData.data.status === "completed") {
               setShowQuestions(false);
               if (!submitted) {
@@ -1029,6 +1149,7 @@ export default function JoinRoomForStudent() {
       socket.off("participantJoined");
       socket.off("participantLeft");
       socket.off("roomStatusChanged");
+      socket.off("questionsUpdate");
       clearInterval(statusCheckInterval);
     };
   }, [socket, room, code, getToken, fetchAllUsers, submitted, handleConfirm]);
@@ -1054,10 +1175,159 @@ export default function JoinRoomForStudent() {
     };
   }, []);
 
+  const handleAnswerSelect = useCallback(
+    async (questionId: string, answerId: string) => {
+      if (!questionId || !socket || !room?._id) return;
+
+      setSelectedAnswers((prev: any) => {
+        const newAnswers = {
+          ...prev,
+          [questionId]: answerId,
+        };
+
+        localStorage.setItem(
+          `quiz_answers_${code}`,
+          JSON.stringify(newAnswers)
+        );
+
+        return newAnswers;
+      });
+
+      // Gửi submission ngay khi chọn đáp án
+      try {
+        const currentQuestion = questions[currentQuestionIndex];
+        const isLastQuestion = currentQuestionIndex === questions.length - 1;
+
+        socket.emit(
+          "submitAnswerRoom",
+          {
+            userId,
+            roomId: room._id,
+            questionId,
+            answerId,
+            clientTimestamp: new Date().toISOString(),
+            isLastQuestion: false,
+          },
+          (response: SubmissionResponse) => {
+            if (response.success) {
+              console.log("Answer submitted successfully:", response);
+
+              // Cập nhật state từ response
+              if (response.data) {
+                const { progress, answered } = response.data;
+
+                // Cập nhật progress
+                setProgress(progress);
+
+                // Cập nhật answeredQuestions
+                setAnsweredQuestions(answered || []);
+
+                // Cập nhật remainingQuestions
+                if (response.data.remaining) {
+                  setRemainingQuestions(response.data.remaining);
+                }
+              }
+            } else {
+              console.error("Failed to submit answer:", response.message);
+            }
+          }
+        );
+      } catch (error) {
+        console.error("Error submitting answer:", error);
+      }
+
+      // Add haptic feedback effect
+      if (window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+    },
+    [code, socket, room?._id, userId, questions, currentQuestionIndex]
+  );
+
+  // Add effect to handle questionsUpdate socket event
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("questionsUpdate", (data) => {
+      console.log("Received questions update:", data);
+
+      if (data.remaining) {
+        setQuestions(data.remaining);
+      }
+
+      if (data.answered) {
+        setAnsweredQuestions(data.answered);
+      }
+
+      if (data.progress) {
+        setProgress(data.progress);
+      }
+
+      // Lưu state vào localStorage
+      localStorage.setItem(
+        `quiz_progress_${code}`,
+        JSON.stringify(data.progress)
+      );
+      localStorage.setItem(
+        `quiz_answers_${code}`,
+        JSON.stringify(
+          data.answered.reduce((acc: any, curr: any) => {
+            acc[curr.questionId] = curr.answerId;
+            return acc;
+          }, {})
+        )
+      );
+    });
+
+    return () => {
+      socket.off("questionsUpdate");
+    };
+  }, [socket, code]);
+
+  // Add effect to restore state from localStorage on reload
+  useEffect(() => {
+    const savedProgress = localStorage.getItem(`quiz_progress_${code}`);
+    if (savedProgress) {
+      try {
+        setProgress(JSON.parse(savedProgress));
+      } catch (e) {
+        console.error("Error parsing saved progress:", e);
+      }
+    }
+  }, [code]);
+
   const handleNextQuestion = useCallback(() => {
     if (currentQuestionIndex < questions.length - 1) {
       setDirection(1);
       setAnimateQuestion(false);
+
+      // Gửi submission cho câu hỏi hiện tại trước khi chuyển câu
+      const currentQuestion = questions[currentQuestionIndex];
+      const currentAnswerId = selectedAnswers[currentQuestion._id];
+
+      if (currentAnswerId && socket && room?._id) {
+        socket.emit(
+          "submitAnswerRoom",
+          {
+            userId,
+            roomId: room._id,
+            questionId: currentQuestion._id,
+            answerId: currentAnswerId,
+            clientTimestamp: new Date().toISOString(),
+            isLastQuestion: false,
+          },
+          (response: SubmissionResponse) => {
+            if (response.success) {
+              console.log(
+                "Answer submitted before moving to next question:",
+                response
+              );
+            } else {
+              console.error("Failed to submit answer:", response.message);
+            }
+          }
+        );
+      }
 
       setTimeout(() => {
         const newIndex = currentQuestionIndex + 1;
@@ -1069,7 +1339,15 @@ export default function JoinRoomForStudent() {
         setAnimateQuestion(true);
       }, 200);
     }
-  }, [currentQuestionIndex, questions.length, code]);
+  }, [
+    currentQuestionIndex,
+    questions.length,
+    code,
+    selectedAnswers,
+    socket,
+    room?._id,
+    userId,
+  ]);
 
   const handlePreviousQuestion = useCallback(() => {
     if (currentQuestionIndex > 0) {
@@ -1087,35 +1365,6 @@ export default function JoinRoomForStudent() {
       }, 200);
     }
   }, [currentQuestionIndex, code]);
-
-  const handleAnswerSelect = useCallback(
-    (questionId: string, answerId: string) => {
-      if (!questionId || !socket || !room?._id) return;
-
-      setSelectedAnswers((prev: any) => {
-        const newAnswers = {
-          ...prev,
-          [questionId]: answerId,
-        };
-
-        // Save to localStorage
-        localStorage.setItem(
-          `quiz_answers_${code}`,
-          JSON.stringify(newAnswers)
-        );
-
-        // Remove socket emit for immediate submission
-        // Just store the answer locally until final submission
-        return newAnswers;
-      });
-
-      // Add haptic feedback effect
-      if (window.navigator && window.navigator.vibrate) {
-        window.navigator.vibrate(50);
-      }
-    },
-    [code, socket, room?._id]
-  );
 
   const handleCopy = useCallback(
     (type: string) => {
@@ -1137,12 +1386,13 @@ export default function JoinRoomForStudent() {
   );
 
   const handleEndQuiz = useCallback(() => {
-    if (submitted) {
+    // Kiểm tra submitted từ server thay vì local state
+    if (quizResults && quizResults.answers && quizResults.answers.length > 0) {
       alert("Bạn đã nộp bài thi này rồi!");
       return;
     }
     setShowConfirmModal(true);
-  }, [submitted]);
+  }, [quizResults]);
 
   const handleCancel = useCallback(() => {
     setShowConfirmModal(false);
@@ -1706,6 +1956,212 @@ export default function JoinRoomForStudent() {
     }
   }, [code]);
 
+  // Add effect to restore state on reload
+  useEffect(() => {
+    if (!room || !userId) return;
+
+    const restoreState = async () => {
+      try {
+        const token = await getToken();
+        // Fetch participant status
+        const response = await fetch(
+          `http://localhost:5000/api/participant/status/${userId}?roomId=${room._id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Restored participant status:", data);
+
+          if (data.success && data.data) {
+            // Restore questions and set current question
+            if (Array.isArray(data.data.remainingQuestions)) {
+              // Get saved answers first
+              const savedAnswers = localStorage.getItem(`quiz_answers_${code}`);
+              const parsedAnswers = savedAnswers
+                ? JSON.parse(savedAnswers)
+                : {};
+
+              // Build answers map from remaining questions with submissions
+              const remainingAnswers = data.data.remainingQuestions.reduce(
+                (acc: Record<string, string>, q: any) => {
+                  if (q.selectedAnswerId) {
+                    acc[q._id] = q.selectedAnswerId;
+                  }
+                  return acc;
+                },
+                {}
+              );
+
+              // Build answers map from answered questions
+              const answeredAnswers = data.data.answeredQuestions.reduce(
+                (acc: Record<string, string>, aq: any) => {
+                  if (aq.answerId) {
+                    acc[aq.questionId] = aq.answerId;
+                  }
+                  return acc;
+                },
+                {}
+              );
+
+              // Merge all answers, prioritizing server data
+              const mergedAnswers = {
+                ...parsedAnswers,
+                ...remainingAnswers,
+                ...answeredAnswers,
+              };
+
+              setSelectedAnswers(mergedAnswers);
+              localStorage.setItem(
+                `quiz_answers_${code}`,
+                JSON.stringify(mergedAnswers)
+              );
+
+              // Keep track of original question order
+              const allQuestions = room.questionOrder.filter(
+                (q: any) =>
+                  data.data.remainingQuestions.some(
+                    (rq: any) => rq._id === q._id
+                  ) ||
+                  data.data.answeredQuestions.some(
+                    (aq: any) => aq.questionId === q._id
+                  )
+              );
+
+              setQuestions(allQuestions);
+              setRemainingQuestions(data.data.remainingQuestions);
+
+              // Get saved question index
+              const savedIndex = localStorage.getItem(
+                `quiz_current_question_${code}`
+              );
+              let currentIndex = savedIndex ? parseInt(savedIndex) : 0;
+
+              // Validate current index
+              if (currentIndex >= allQuestions.length) {
+                currentIndex = allQuestions.length - 1;
+              }
+
+              // Set current question without advancing
+              setCurrentQuestionIndex(currentIndex);
+              setCurrentQuestion(allQuestions[currentIndex]);
+
+              // Show questions if we have any
+              if (allQuestions.length > 0) {
+                setShowQuestions(true);
+              }
+
+              // Restore answered questions
+              if (Array.isArray(data.data.answeredQuestions)) {
+                setAnsweredQuestions(data.data.answeredQuestions);
+              }
+
+              // Restore progress
+              if (data.data.progress) {
+                setProgress(data.data.progress);
+                localStorage.setItem(
+                  `quiz_progress_${code}`,
+                  JSON.stringify(data.data.progress)
+                );
+
+                // Check if quiz is completed
+                if (data.data.isCompleted) {
+                  setSubmitted(true);
+                  localStorage.setItem(`quiz_submitted_${code}`, "true");
+
+                  // Fetch and set quiz results
+                  const resultsResponse = await fetch(
+                    `http://localhost:5000/api/submission/results?roomId=${room._id}&userId=${userId}`,
+                    {
+                      headers: {
+                        Authorization: `Bearer ${await getToken()}`,
+                        "Content-Type": "application/json",
+                      },
+                    }
+                  );
+
+                  if (resultsResponse.ok) {
+                    const resultsData = await resultsResponse.json();
+                    if (resultsData.success) {
+                      setQuizResults(resultsData.data);
+                      localStorage.setItem(
+                        `quiz_results_${code}`,
+                        JSON.stringify(resultsData.data)
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error restoring state:", error);
+      }
+    };
+
+    restoreState();
+  }, [room, userId, code, getToken]);
+
+  // Modal for confirming quiz submission
+  const confirmModal = (
+    <AnimatePresence>
+      {showConfirmModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 modal-overlay-animate"
+        >
+          <motion.div
+            initial={{ scale: 0.9, y: 20, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.9, y: 20, opacity: 0 }}
+            transition={{ type: "spring", damping: 15 }}
+            className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl modal-animate"
+          >
+            <h3 className="text-2xl font-bold text-orange mb-4 text-center">
+              Xác nhận nộp bài
+            </h3>
+            <p className="text-background mb-6 text-center">
+              Bạn có chắc chắn muốn kết thúc bài kiểm tra và nộp bài?
+              {completionPercentage < 100 && (
+                <span className="block mt-2 text-orange">
+                  Bạn mới hoàn thành {completionPercentage}% câu hỏi!
+                </span>
+              )}
+            </p>
+
+            <div className="flex justify-center space-x-4">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCancel}
+                className="px-6 py-3 bg-gray-600 text-background rounded-lg font-semibold hover:bg-gray-500 transition-colors"
+              >
+                Huỷ bỏ
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleConfirm}
+                className="px-6 py-3 bg-orange text-darkblue rounded-lg font-semibold hover:bg-amber-500 transition-colors"
+              >
+                Xác nhận nộp bài
+              </motion.button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   if (loading) {
     return <SpinnerLoading />;
   }
@@ -1735,23 +2191,43 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  if (submitted && quizResults) {
+  // Hiển thị kết quả khi đã nộp bài và có kết quả
+  if (
+    submitted &&
+    quizResults &&
+    quizResults.answers &&
+    quizResults.answers.length > 0
+  ) {
     return (
       <QuizResults
         score={quizResults.score}
         totalQuestions={quizResults.totalQuestions}
         stats={quizResults.stats}
         answers={quizResults.answers}
-        questions={questions.map((q) => ({
-          _id: q._id || "",
-          questionText: q.questionText,
-          answers: q.answers,
-        }))}
+        questions={
+          questions.length > 0
+            ? questions
+            : quizResults.answers.map((answer: QuizAnswer) => ({
+                _id: answer.questionId,
+                questionText: answer.question,
+                answers: [
+                  {
+                    text: answer.correctAnswer,
+                    isCorrect: true,
+                  },
+                  {
+                    text: answer.userAnswer,
+                    isCorrect: answer.isCorrect,
+                  },
+                ],
+              }))
+        }
       />
     );
   }
 
-  if (!showQuestions || room.status === "scheduled") {
+  // Hiển thị phòng chờ khi chưa active hoặc đang scheduled
+  if (room.status === "waiting" || room.status === "scheduled") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background w-full">
         <main className="flex flex-col justify-center items-center">
@@ -1805,7 +2281,9 @@ export default function JoinRoomForStudent() {
               </div>
             </div>
             <h3 className="text-2xl font-bold text-orange mb-2">
-              Đang chờ bắt đầu
+              {room.status === "scheduled"
+                ? "Đang chờ giáo viên bắt đầu"
+                : "Đang chờ bắt đầu"}
             </h3>
             <p className="text-xl text-gray-300">{timeRemaining}</p>
           </div>
@@ -1869,90 +2347,82 @@ export default function JoinRoomForStudent() {
     );
   }
 
-  if (questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
-        <div className="text-xl text-yellow-500 p-6 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
-          <div className="flex items-center justify-center mb-4">
-            <svg
-              className="w-12 h-12 text-yellow-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+  // Hiển thị giao diện làm bài khi phòng active
+  if (room.status === "active") {
+    // Hiển thị loading khi đang tải câu hỏi
+    if (questions.length === 0) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
+          <div className="text-xl text-yellow-500 p-6 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
+            <div className="flex items-center justify-center mb-4">
+              <svg
+                className="w-12 h-12 text-yellow-500 animate-spin"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </div>
+            <p className="text-center">Đang tải câu hỏi...</p>
           </div>
-          <p className="text-center">Đang chờ câu hỏi từ giáo viên...</p>
         </div>
+      );
+    }
+
+    // Render giao diện làm bài khi đã có câu hỏi
+    return (
+      <div className="relative">
+        <style>{styles}</style>
+        {renderQuestion()}
+        {confirmModal}
       </div>
     );
   }
 
-  // Modal for confirming quiz submission
-  const confirmModal = (
-    <AnimatePresence>
-      {showConfirmModal && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 modal-overlay-animate"
-        >
-          <motion.div
-            initial={{ scale: 0.9, y: 20, opacity: 0 }}
-            animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-            transition={{ type: "spring", damping: 15 }}
-            className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl modal-animate"
-          >
-            <h3 className="text-2xl font-bold text-orange mb-4 text-center">
-              Xác nhận nộp bài
-            </h3>
-            <p className="text-background mb-6 text-center">
-              Bạn có chắc chắn muốn kết thúc bài kiểm tra và nộp bài?
-              {completionPercentage < 100 && (
-                <span className="block mt-2 text-orange">
-                  Bạn mới hoàn thành {completionPercentage}% câu hỏi!
-                </span>
-              )}
-            </p>
-
-            <div className="flex justify-center space-x-4">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleCancel}
-                className="px-6 py-3 bg-gray-600 text-background rounded-lg font-semibold hover:bg-gray-500 transition-colors"
-              >
-                Huỷ bỏ
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleConfirm}
-                className="px-6 py-3 bg-orange text-darkblue rounded-lg font-semibold hover:bg-amber-500 transition-colors"
-              >
-                Xác nhận nộp bài
-              </motion.button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
+  // Fallback UI cho trạng thái không xác định
   return (
-    <div className="relative">
-      <style>{styles}</style>
-      {renderQuestion()}
-      {confirmModal}
+    <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-littleblue text-background flex items-center justify-center">
+      <div className="text-xl text-yellow-500 p-6 bg-black/30 backdrop-blur-sm rounded-lg shadow-lg">
+        <div className="flex items-center justify-center mb-4">
+          <svg
+            className="w-12 h-12 text-yellow-500 animate-spin"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+        </div>
+        <p className="text-center">Đang xử lý...</p>
+        <p className="text-sm text-gray-400 mt-2 text-center">
+          Trạng thái phòng: {room.status}
+        </p>
+      </div>
     </div>
   );
 }
