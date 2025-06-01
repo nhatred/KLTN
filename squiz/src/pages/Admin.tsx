@@ -145,17 +145,22 @@ const Admin = () => {
 
   if (!isAdmin) {
     return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="mt-4">You do not have permission to access this page.</p>
+      <div className="p-8 text-center pt-20 w-full h-full flex flex-col items-center justify-center">
+        <img className="h-[60%]" src="/assets/404.png" alt="" />
+        <h1 className="text-2xl font-bold text-orange">TRUY CẬP BỊ TỪ CHỐI</h1>
+        <p className="mt-4">Bạn không có quyền truy cập trang này.</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-6">User Management</h1>
-
+    <div className="p-8 pt-32">
+      <div className="mb-8">
+        <h1 className="text-2xl mb-2">Quản lý người dùng</h1>
+        <p className="text-darkblue">
+          Quản lý và tổ chức các tài khoản người dùng trong hệ thống.
+        </p>
+      </div>
       {/* Toast */}
       <div id="toast" className="hidden"></div>
 
@@ -165,19 +170,19 @@ const Admin = () => {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                User
+                Tên người dùng
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Email
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Role
+                Vai trò
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created At
+                Ngày tạo
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
+                Hành động
               </th>
             </tr>
           </thead>
@@ -206,13 +211,15 @@ const Admin = () => {
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                         handleRoleChange(user._id, e.target.value)
                       }
-                      className="appearance-none w-28 bg-white border border-gray-300 rounded-md py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="appearance-none w-full bg-white border border-gray-300 rounded-md py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-orange"
                     >
-                      <option value="student">Student</option>
-                      <option value="teacher">Teacher</option>
-                      <option value="admin">Admin</option>
+                      <option value="student">Học sinh</option>
+                      <option value="teacher">Giáo viên</option>
+                      <option value="admin">Quản trị viên</option>
                     </select>
-                    <HugeiconsIcon icon={ArrowDown01Icon} />
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2">
+                      <HugeiconsIcon icon={ArrowDown01Icon} />
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

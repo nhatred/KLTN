@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import Quizbar from "../components/Quizbar";
 import React, { useEffect, useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import MultipleChoices from "../components/MultipleChoices";
 import { useForm } from "react-hook-form";
 import { Question } from "../types/Question";
@@ -23,7 +23,7 @@ import {
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import imageCompression from "browser-image-compression";
-import SelectQuizModal from "../components/SelectQuizModal";
+import SelectExamBankModal from "../components/SelectExamBankModal";
 
 const QUESTION_TYPES = {
   MULTIPLE_CHOICE: "multipleChoices",
@@ -47,7 +47,7 @@ export default function EditQuiz() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getToken, userId } = useAuth();
-
+  const { user } = useUser();
   // Add state for unauthorized access
   const [isUnauthorized, setIsUnauthorized] = useState(false);
 
@@ -1430,17 +1430,20 @@ export default function EditQuiz() {
                   {questions.length} câu hỏi ({totalScoreOfQuiz()} điểm)
                 </p>
                 <div className="flex gap-3">
-                  {!questions.length && (
-                    <button
-                      onClick={() => setIsSelectQuizModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 border border-darkblue text-darkblue rounded-lg hover:bg-darkblue hover:text-white transition-colors duration-200"
-                    >
-                      <i className="fa-solid fa-plus"></i>
-                      <span className="font-medium">
-                        Thêm câu hỏi từ ngân hàng đề thi
-                      </span>
-                    </button>
-                  )}
+                  {!questions.length &&
+                    user &&
+                    (user.publicMetadata.role === "teacher" ||
+                      user.publicMetadata.role === "admin") && (
+                      <button
+                        onClick={() => setIsSelectQuizModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 border border-darkblue text-darkblue rounded-lg hover:bg-darkblue hover:text-white transition-colors duration-200"
+                      >
+                        <i className="fa-solid fa-plus"></i>
+                        <span className="font-medium">
+                          Thêm câu hỏi từ ngân hàng đề thi
+                        </span>
+                      </button>
+                    )}
                   {!isExam && (
                     <button
                       onClick={handleClickModal}
@@ -1898,7 +1901,7 @@ export default function EditQuiz() {
       </form>
       {/* Select Quiz Modal */}
       {isSelectQuizModalOpen && (
-        <SelectQuizModal
+        <SelectExamBankModal
           isOpen={isSelectQuizModalOpen}
           onClose={() => setIsSelectQuizModalOpen(false)}
           onAddQuestions={handleAddQuestionsFromBank}

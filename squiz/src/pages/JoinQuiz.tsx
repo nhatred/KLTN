@@ -276,7 +276,7 @@ export default function JoinQuiz() {
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
 
   // Tinh tong diem
-  const totalScoreValue = quizData.questions.reduce(
+  const totalScoreValue = quizData.questions?.reduce(
     (acc, question) =>
       acc + (question.scorePerQuestion || quizData.scorePerQuestion),
     0
@@ -323,7 +323,9 @@ export default function JoinQuiz() {
 
   // Tinh phan tram diem
   const calculatePercentage = useCallback(() => {
-    const percent = Math.round((quizState.score / totalScoreValue) * 100);
+    const percent = Math.round(
+      (quizState.score / (totalScoreValue || 0)) * 100
+    );
     return isNaN(percent) ? 0 : percent;
   }, [quizState.score, totalScoreValue]);
 
@@ -336,7 +338,7 @@ export default function JoinQuiz() {
   const moveToNextQuestion = useCallback(() => {
     const nextQuestion = quizState.currentQuestion + 1;
 
-    if (nextQuestion < quizData.questions.length) {
+    if (nextQuestion < (quizData.questions?.length || 0)) {
       // Animate question transition
       setQuestionChanging(true);
 
@@ -372,7 +374,7 @@ export default function JoinQuiz() {
     }
   }, [
     quizState.currentQuestion,
-    quizData.questions.length,
+    quizData.questions?.length,
     loadQuestion,
     fromTimeout,
   ]);
@@ -446,7 +448,7 @@ export default function JoinQuiz() {
         userAnswer: -1,
         correct: false,
         isCorrect: false,
-        questionId: quizData.questions[quizState.currentQuestion]?._id || "",
+        questionId: quizData.questions?.[quizState.currentQuestion]?._id || "",
         timeToAnswer: quizData.timePerQuestion - 0, // Full time used
       },
     ]);
@@ -631,7 +633,7 @@ export default function JoinQuiz() {
   useEffect(() => {
     if (!quizState.showQuiz) return;
 
-    const currentQ = quizData.questions[quizState.currentQuestion];
+    const currentQ = quizData.questions?.[quizState.currentQuestion];
     if (!currentQ) return;
 
     const questionTime = currentQ.timePerQuestion || quizData.timePerQuestion;
@@ -705,7 +707,7 @@ export default function JoinQuiz() {
 
   // Quiz control functions
   const startQuiz = useCallback(() => {
-    if (quizData.questions.length === 0) {
+    if (quizData.questions?.length === 0) {
       setError("Khong the bat dau quiz vi khong co cau hoi nao.");
       return;
     }
@@ -739,7 +741,7 @@ export default function JoinQuiz() {
         }, 150);
       }
 
-      const currentQ = quizData.questions[quizState.currentQuestion];
+      const currentQ = quizData.questions?.[quizState.currentQuestion];
       // Kiem tra xem dap an nay dung hay sai
       const correct = currentQ?.answers[optionIndex]?.isCorrect === true;
 
@@ -799,7 +801,7 @@ export default function JoinQuiz() {
   // Thêm hàm để bắt đầu câu hỏi khi người dùng sẵn sàng
   const startCurrentQuestion = useCallback(() => {
     // Bắt đầu đếm ngược cho câu hỏi hiện tại
-    const currentQ = quizData.questions[quizState.currentQuestion];
+    const currentQ = quizData.questions?.[quizState.currentQuestion];
     if (!currentQ) return;
 
     const questionTime = currentQ.timePerQuestion || quizData.timePerQuestion;
@@ -829,7 +831,7 @@ export default function JoinQuiz() {
 
   // Render cau hoi
   const renderQuestion = () => {
-    const currentQ = quizData.questions[quizState.currentQuestion];
+    const currentQ = quizData.questions?.[quizState.currentQuestion];
     if (!currentQ) return null;
 
     const maxTime = currentQ?.timePerQuestion || quizData.timePerQuestion;
@@ -890,7 +892,7 @@ export default function JoinQuiz() {
           <div className="flex justify-between text-xl items-center text-background">
             <span className="font-medium">{`Câu hỏi ${
               quizState.currentQuestion + 1
-            }/${quizData.questions.length}`}</span>
+            }/${quizData.questions?.length}`}</span>
             <span className={getTimeDisplayClass()}>{`⏱️ ${timeLeft}s`}</span>
             <span className="font-medium text-orange">{`Điểm: ${quizState.score}`}</span>
           </div>
@@ -1201,7 +1203,7 @@ export default function JoinQuiz() {
       {!isLoading &&
         !error &&
         quizState.showQuiz &&
-        quizData.questions.length > 0 &&
+        (quizData.questions?.length || 0) > 0 &&
         renderQuestion()}
 
       {/* Results Screen */}

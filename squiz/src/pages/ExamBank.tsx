@@ -16,7 +16,7 @@ import {
   Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 
 import axios, { AxiosError } from "axios";
@@ -639,6 +639,48 @@ export default function ExamBank() {
     }
   };
 
+  // Check if current user is admin
+  const { user: currentUser } = useUser();
+  const [isTeacher, setIsTeacher] = useState(false);
+
+  useEffect(() => {
+    const checkTeacherStatus = async () => {
+      try {
+        if (currentUser) {
+          const token = await getToken();
+          const response = await axios.get(
+            `http://localhost:5000/api/users/${currentUser.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          console.log(response.data.data);
+          setIsTeacher(
+            response.data.data.role === "teacher" ||
+              response.data.data.role === "admin"
+          );
+        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+        setIsTeacher(false);
+      }
+    };
+
+    checkTeacherStatus();
+  }, [currentUser]);
+
+  if (!isTeacher) {
+    return (
+      <div className="p-8 text-center pt-20 w-full h-full flex flex-col items-center justify-center">
+        <img className="h-[60%]" src="/assets/404.png" alt="" />
+        <h1 className="text-2xl font-bold text-orange">TRUY CẬP BỊ TỪ CHỐI</h1>
+        <p className="mt-4">Bạn không có quyền truy cập trang này.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <div className="container mx-auto px-4 py-8 pt-32">
@@ -804,7 +846,7 @@ export default function ExamBank() {
             </p>
             <button
               onClick={handleCreateExam}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-6 py-2 bg-orange text-darkblue font-semibold rounded-lg btn-hover transition-colors"
             >
               Tạo ngân hàng đề đầu tiên
             </button>

@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import { clerkClient } from "@clerk/express";
 
 // Create new user
 const createUser = async (req, res) => {
@@ -104,6 +105,12 @@ const updateUserRole = async (req, res) => {
       { role },
       { new: true }
     );
+
+    await clerkClient.users.updateUserMetadata(userId, {
+      publicMetadata: {
+        role,
+      },
+    });
 
     if (!updatedUser) {
       return res.status(404).json({

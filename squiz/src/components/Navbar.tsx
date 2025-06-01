@@ -13,7 +13,6 @@ import {
   DashboardCircleEditIcon,
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
-import SelectQuizModal from "../components/SelectQuizModal";
 import SelectQuizForRoomModal from "../components/SelectQuizForRoomModal";
 import CreateQuizModal from "../components/CreateQuizModal";
 
@@ -225,33 +224,37 @@ export default function Navbar() {
             </NavLink>
           )}
 
-          {user && (
-            <NavLink
-              to="/dashboard/room-manager/"
-              className={({ isActive }) =>
-                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
-                  isActive ? "btn-active text-orange" : ""
-                }`
-              }
-            >
-              <HugeiconsIcon icon={AirplayLineIcon} />
-              <p>Quản lý phòng thi</p>
-            </NavLink>
-          )}
+          {user &&
+            (user.publicMetadata.role === "teacher" ||
+              user.publicMetadata.role === "admin") && (
+              <NavLink
+                to="/dashboard/room-manager/"
+                className={({ isActive }) =>
+                  `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                    isActive ? "btn-active text-orange" : ""
+                  }`
+                }
+              >
+                <HugeiconsIcon icon={AirplayLineIcon} />
+                <p>Quản lý phòng thi</p>
+              </NavLink>
+            )}
 
-          {user && (
-            <NavLink
-              to="/dashboard/exam-bank/"
-              className={({ isActive }) =>
-                `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
-                  isActive ? "btn-active text-orange" : ""
-                }`
-              }
-            >
-              <HugeiconsIcon icon={Book01Icon} />
-              <p>Ngân hàng đề thi</p>
-            </NavLink>
-          )}
+          {user &&
+            (user.publicMetadata.role === "teacher" ||
+              user.publicMetadata.role === "admin") && (
+              <NavLink
+                to="/dashboard/exam-bank/"
+                className={({ isActive }) =>
+                  `flex h-12 items-center gap-2 px-3 font-bold text-xl btn-hover ${
+                    isActive ? "btn-active text-orange" : ""
+                  }`
+                }
+              >
+                <HugeiconsIcon icon={Book01Icon} />
+                <p>Ngân hàng đề thi</p>
+              </NavLink>
+            )}
           {user && user.publicMetadata.role === "admin" && (
             <NavLink
               to="/dashboard/admin/"
@@ -267,15 +270,17 @@ export default function Navbar() {
           )}
         </div>
         <div className="flex items-center gap-5">
-          {user && (
-            <button
-              onClick={() => setIsSelectQuizModalOpen(true)}
-              className="flex bg-gray-100 btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
-            >
-              <HugeiconsIcon icon={Add01Icon} size={20} />
-              <p>Tạo phòng</p>
-            </button>
-          )}
+          {user &&
+            (user.publicMetadata.role === "teacher" ||
+              user.publicMetadata.role === "admin") && (
+              <button
+                onClick={() => setIsSelectQuizModalOpen(true)}
+                className="flex bg-gray-100 btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg"
+              >
+                <HugeiconsIcon icon={Add01Icon} size={20} />
+                <p>Tạo phòng</p>
+              </button>
+            )}
           {user && (
             <button
               onClick={() => setIsCreateQuizModalOpen(true)}

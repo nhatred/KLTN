@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { connectSocket, disconnectSocket } from "../services/socket";
 import axios from "axios";
-import { useAuth, useClerk } from "@clerk/clerk-react";
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { Room, GroupedRooms, RoomStatus } from "../types/Room";
 import { Socket } from "socket.io-client";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -23,12 +23,27 @@ const RoomManager = () => {
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { getToken } = useAuth();
+  const { user: currentUser } = useUser();
+  const [isTeacher, setIsTeacher] = useState(false);
 
   const [rooms, setRooms] = useState<GroupedRooms>({
     scheduled: [],
     active: [],
     completed: [],
   });
+
+  // Add state for each room status list
+  const [scheduledList, setScheduledList] = useState<Room[]>([]);
+  const [activeList, setActiveList] = useState<Room[]>([]);
+  const [completedList, setCompletedList] = useState<Room[]>([]);
+
+  // Update lists when rooms change
+  useEffect(() => {
+    setScheduledList(rooms.scheduled || []);
+    setActiveList(rooms.active || []);
+    setCompletedList(rooms.completed || []);
+  }, [rooms]);
 
   const fetchRooms = async () => {
     try {
@@ -155,6 +170,42 @@ const RoomManager = () => {
     }
   }, [location.search]);
 
+  // Check if current user is admin
+  useEffect(() => {
+    const checkTeacherStatus = async () => {
+      try {
+        if (currentUser) {
+          const token = await getToken();
+          const response = await axios.get(
+            `http://localhost:5000/api/users/${currentUser.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          console.log(response.data.data);
+          setIsTeacher(response.data.data.role === "teacher");
+        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
+        setIsTeacher(false);
+      }
+    };
+
+    checkTeacherStatus();
+  }, [currentUser]);
+
+  if (!isTeacher) {
+    return (
+      <div className="p-8 text-center pt-20 w-full h-full flex flex-col items-center justify-center">
+        <img className="h-[60%]" src="/assets/404.png" alt="" />
+        <h1 className="text-2xl font-bold text-orange">TRUY CẬP BỊ TỪ CHỐI</h1>
+        <p className="mt-4">Bạn không có quyền truy cập trang này.</p>
+      </div>
+    );
+  }
+
   const handleCompletedRoom = (room: Room) => {
     if (!socket) {
       console.error("Socket chưa được kết nối");
@@ -254,10 +305,13 @@ const RoomManager = () => {
   };
 
   const renderRooms = (status: RoomStatus) => {
-    const [list, setList] = useState(rooms[status] || []);
-    useEffect(() => {
-      setList(rooms[status] || []);
-    }, [rooms]);
+    const list =
+      status === "scheduled"
+        ? scheduledList
+        : status === "active"
+        ? activeList
+        : completedList;
+
     return list.length === 0 ? (
       <p className="text-gray-500 italic">Không có phòng</p>
     ) : (
