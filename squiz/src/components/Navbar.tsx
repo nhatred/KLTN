@@ -28,55 +28,97 @@ export default function Navbar() {
   const [visible, setVisible] = useState(true);
   const [showShadow, setShowShadow] = useState(false);
 
-  // Add useEffect to check user role
+  // Add useEffect to handle user creation
   useEffect(() => {
-    const checkUserRole = async () => {
+    const createUserInDatabase = async () => {
       if (!user) return;
 
       try {
-        console.log("Checking user role...");
+        console.log("Starting user sync process...");
+        console.log("Current user from Clerk:", {
+          id: user.id,
+          name: user.fullName,
+          email: user.primaryEmailAddress?.emailAddress,
+          imageUrl: user.imageUrl,
+        });
+
         const token = await getToken();
         if (!token) {
           console.error("No authentication token available");
           return;
         }
 
-        // Get user data from our database
-        const response = await fetch(
-          `http://localhost:5000/api/users/${user.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const userData = await response.json();
-          console.log("User data from database:", userData);
-
-          // If the roles don't match, update Clerk metadata
-          if (userData.data.role !== user.publicMetadata.role) {
-            console.log("Syncing role with database...");
-            await user.update({
-              unsafeMetadata: { role: userData.data.role },
-            });
-          }
-        } else if (response.status === 404) {
-          console.log(
-            "User not found in database, waiting for webhook to create..."
+        // Always try to create user first
+        try {
+          console.log("Attempting to create user in database...");
+          const createResponse = await fetch(
+            "http://localhost:5000/api/users",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                _id: user.id,
+                name: user.fullName,
+                email: user.primaryEmailAddress?.emailAddress,
+                role: user.publicMetadata.role,
+                imageUrl: user.imageUrl,
+              }),
+            }
           );
-        } else {
-          console.error("Error fetching user data:", await response.text());
+
+          const createData = await createResponse.json();
+          console.log("Create user response:", createData);
+
+          if (createResponse.ok) {
+            console.log("Successfully created user in database");
+          } else if (createResponse.status === 409) {
+            console.log("User already exists in database");
+
+            // Update existing user's information
+            const updateResponse = await fetch(
+              `http://localhost:5000/api/users/${user.id}`,
+              {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  name: user.fullName,
+                  email: user.primaryEmailAddress?.emailAddress,
+                  imageUrl: user.imageUrl,
+                }),
+              }
+            );
+
+            if (updateResponse.ok) {
+              console.log("Successfully updated existing user");
+            } else {
+              console.error(
+                "Failed to update existing user:",
+                await updateResponse.text()
+              );
+            }
+          } else {
+            console.error(
+              "Failed to create user:",
+              createData.message || "Unknown error"
+            );
+          }
+        } catch (error) {
+          console.error("Error during user creation/update:", error);
         }
       } catch (error) {
-        console.error("Error checking user role:", error);
+        console.error("Error in user sync process:", error);
       }
     };
 
     if (user) {
-      console.log("User detected, checking role...");
-      checkUserRole();
+      console.log("User detected, starting database sync...");
+      createUserInDatabase();
     }
   }, [user, getToken]);
 

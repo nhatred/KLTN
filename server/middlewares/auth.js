@@ -1,5 +1,4 @@
-import { clerkClient, requireAuth as clerkRequireAuth } from "@clerk/express";
-import User from "../models/User.js";
+import { clerkClient } from "@clerk/express";
 
 // Theo dõi thời gian log cuối cùng cho mỗi endpoint
 const lastLoggedTime = new Map();
@@ -64,78 +63,6 @@ export const verifyToken = async (req, res, next) => {
     return res.status(401).json({
       success: false,
       message: "Unauthorized - Invalid token",
-    });
-  }
-};
-
-// Middleware to verify JWT token from Clerk
-export const requireAuth = clerkRequireAuth();
-
-// Middleware to check if user is admin
-export const requireAdmin = async (req, res, next) => {
-  try {
-    const userId = req.auth.userId;
-
-    // Get user from Clerk
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    // Get user from database
-    const user = await User.findById(userId);
-
-    // Check if user exists and has admin role in both Clerk and database
-    if (
-      !user ||
-      user.role !== "admin" ||
-      !clerkUser.publicMetadata?.role === "admin"
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Admin privileges required.",
-      });
-    }
-
-    next();
-  } catch (error) {
-    console.error("Error checking admin status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error checking admin status",
-      error: error.message,
-    });
-  }
-};
-
-// Middleware to check if user is teacher or admin
-export const requireTeacherOrAdmin = async (req, res, next) => {
-  try {
-    const userId = req.auth.userId;
-
-    // Get user from Clerk
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    // Get user from database
-    const user = await User.findById(userId);
-
-    // Check if user exists and has appropriate role in both Clerk and database
-    const clerkRole = clerkUser.publicMetadata?.role;
-    if (
-      !user ||
-      (user.role !== "teacher" && user.role !== "admin") ||
-      (clerkRole !== "teacher" && clerkRole !== "admin")
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Teacher or admin privileges required.",
-      });
-    }
-
-    next();
-  } catch (error) {
-    console.error("Error checking user role:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error checking user role",
-      error: error.message,
     });
   }
 };

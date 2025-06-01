@@ -60,57 +60,16 @@ const Admin = () => {
   const fetchUsers = async () => {
     try {
       const token = await getToken();
-
-      if (!token) {
-        console.error("No authentication token available");
-        showToast("Authentication error", "error");
-        return;
-      }
-
-      console.log("Making request to fetch users...");
       const response = await axios.get(`http://localhost:5000/api/users`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        validateStatus: function (status) {
-          return status < 500; // Resolve only if the status code is less than 500
         },
       });
-
-      if (response.status === 401) {
-        console.error("Unauthorized access");
-        showToast("Unauthorized access", "error");
-        return;
-      }
-
-      if (response.status === 403) {
-        console.error("Forbidden access - insufficient permissions");
-        showToast("Insufficient permissions", "error");
-        return;
-      }
-
-      if (!response.data || !response.data.data) {
-        console.error("Invalid response format:", response.data);
-        showToast("Invalid server response", "error");
-        return;
-      }
-
       setUsers(response.data.data);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching users:", error);
-      if (axios.isAxiosError(error) && error.response) {
-        console.error("Server response:", error.response.data);
-        console.error("Status code:", error.response.status);
-        showToast(
-          `Server error: ${error.response.data.message || "Unknown error"}`,
-          "error"
-        );
-      } else {
-        showToast("Error connecting to server", "error");
-      }
-      setLoading(false);
+      showToast("Error fetching users", "error");
     }
   };
 
