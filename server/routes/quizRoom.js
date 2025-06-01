@@ -14,7 +14,7 @@ import {
   getRoomResults,
   _calculateQuestionStats,
   getUserQuizRoomHistory,
-} from "../controllers/QuizRoomController.js";
+} from "../controllers/quizRoomController.js";
 
 const router = express.Router();
 

@@ -100,10 +100,9 @@ export default function JoinRoom() {
   const [isLoadingResults, setIsLoadingResults] = useState(false);
 
   // Add state for participant progress
-  const [participantProgress] = useState<
-    Record<string, ParticipantProgress>
-  >({});
-
+  const [participantProgress] = useState<Record<string, ParticipantProgress>>(
+    {}
+  );
 
   // Add effect to keep token updated
   useEffect(() => {

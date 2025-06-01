@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "https://images.unsplash.com/photo-1574232877776-2024ccf7c09e",
     },
+    role: {
+      type: String,
+      enum: ["admin", "teacher", "student"],
+      default: "student",
+      required: true,
+    },
     createdQuizzes: [
       {
         type: mongoose.Schema.Types.ObjectId,

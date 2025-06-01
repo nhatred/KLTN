@@ -17,6 +17,7 @@ import RoomManager from "./pages/RoomManager";
 import JoinRoomForStudent from "./pages/JoinRoomForStudent";
 import ExamBank from "./pages/ExamBank";
 import ExamCreatedByMe from "./components/ExamCreatedByMe";
+import Admin from "./pages/Admin";
 function App() {
   return (
     <BrowserRouter>
@@ -35,6 +36,7 @@ function App() {
             </Route>
             <Route path="room-manager" element={<RoomManager />} />
             <Route path="exam-bank" element={<ExamBank />} />
+            <Route path="admin" element={<Admin />} />
           </Route>
           <Route path="/edit-quiz/:id" element={<EditQuiz />} />
           <Route path="/join-quiz/:id" element={<JoinQuiz />} />

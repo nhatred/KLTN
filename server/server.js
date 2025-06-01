@@ -16,6 +16,7 @@ import startCronJobs from "./ultil/cron.js";
 import { clerkMiddleware } from "@clerk/express";
 import userRoutes from "./routes/userRoutes.js";
 import submissionRoutes from "./routes/submission.js";
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -28,9 +29,33 @@ const io = new Server(httpServer, {
 await connectDB();
 await connectCloudinary();
 
+// Enable CORS and JSON parsing first
 app.use(cors());
-app.use(clerkMiddleware());
 app.use(express.json());
+
+// Register webhook endpoint before Clerk middleware
+app.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    console.log("=== Webhook Request Received ===");
+    console.log("Headers:", req.headers);
+    console.log("Raw Body:", req.body.toString());
+
+    // Parse the raw body
+    const payload = JSON.parse(req.body.toString());
+    console.log("Parsed Body:", payload);
+    console.log("============================");
+
+    clerkWebhooks(req, res).catch((error) => {
+      console.error("Webhook Error:", error);
+      next(error);
+    });
+  }
+);
+
+// Add Clerk middleware after webhook endpoint
+app.use(clerkMiddleware());
 
 // Make io available to our app
 app.set("io", io);
@@ -38,7 +63,8 @@ app.set("io", io);
 app.get("/", (req, res) => {
   res.send("API working");
 });
-app.post("/clerk", clerkWebhooks);
+
+// Routes
 app.use("/api/users", userRoutes);
 app.use("/api/quiz", quizRoutes);
 app.use("/api/question", questionRoutes);
@@ -46,7 +72,6 @@ app.use("/api/quizRoom", QuizRoomRoutes);
 app.use("/api/examSets", examSetRoutes);
 app.use("/api/participant", participantRoutes);
 app.use("/api/submission", submissionRoutes);
-// Routes
 
 // Setup Socket.IO
 setupQuizSocket(io);
