@@ -35,22 +35,31 @@ app.use(express.json());
 
 // Register webhook endpoint before Clerk middleware
 app.post(
-  "/webhook",
+  "/clerk",
   express.raw({ type: "application/json" }),
   (req, res, next) => {
-    console.log("=== Webhook Request Received ===");
+    console.log("=== Webhook Request Received at /clerk ===");
     console.log("Headers:", req.headers);
     console.log("Raw Body:", req.body.toString());
 
-    // Parse the raw body
-    const payload = JSON.parse(req.body.toString());
-    console.log("Parsed Body:", payload);
-    console.log("============================");
+    try {
+      // Parse the raw body
+      const payload = JSON.parse(req.body.toString());
+      console.log("Parsed Body:", payload);
+      console.log("============================");
 
-    clerkWebhooks(req, res).catch((error) => {
-      console.error("Webhook Error:", error);
-      next(error);
-    });
+      clerkWebhooks(req, res).catch((error) => {
+        console.error("Webhook Error:", error);
+        next(error);
+      });
+    } catch (error) {
+      console.error("Error parsing webhook body:", error);
+      res.status(400).json({
+        success: false,
+        message: "Invalid JSON payload",
+        error: error.message,
+      });
+    }
   }
 );
 

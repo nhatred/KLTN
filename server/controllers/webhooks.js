@@ -9,7 +9,10 @@ export const clerkWebhooks = async (req, res) => {
 
     if (!WEBHOOK_SECRET) {
       console.error("WEBHOOK_SECRET is missing in environment variables");
-      throw new Error("Please add WEBHOOK_SECRET from Clerk Dashboard to .env");
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error - missing WEBHOOK_SECRET",
+      });
     }
 
     // Get the headers
@@ -26,14 +29,18 @@ export const clerkWebhooks = async (req, res) => {
       });
       return res.status(400).json({
         success: false,
-        message: "Error occurred -- no svix headers",
+        message: "Missing required Svix headers",
       });
     }
 
     // Get the body
     const payload = req.body;
-    const body = JSON.stringify(payload);
-    console.log("Processing webhook payload:", payload);
+    const body =
+      typeof payload === "string" ? payload : JSON.stringify(payload);
+    console.log(
+      "Processing webhook payload:",
+      typeof payload === "string" ? JSON.parse(payload) : payload
+    );
 
     // Create a new Webhook instance with your secret
     const wh = new Webhook(WEBHOOK_SECRET);
@@ -51,7 +58,7 @@ export const clerkWebhooks = async (req, res) => {
       console.error("Error verifying webhook:", err);
       return res.status(400).json({
         success: false,
-        message: "Error occurred during webhook verification",
+        message: "Webhook verification failed",
         error: err.message,
       });
     }
@@ -61,6 +68,9 @@ export const clerkWebhooks = async (req, res) => {
 
     if (eventType === "user.created") {
       console.log("Processing user.created event");
+      const userData = evt.data;
+
+      // Extract user information
       const {
         id,
         email_addresses,
@@ -68,15 +78,19 @@ export const clerkWebhooks = async (req, res) => {
         first_name,
         last_name,
         image_url,
+        profile_image_url,
         public_metadata,
-      } = evt.data;
+      } = userData;
 
-      // Log the user data we're about to save
-      console.log("Creating new user with data:", {
+      // Log the extracted data
+      console.log("Extracted user data:", {
         id,
         email: email_addresses?.[0]?.email_address,
-        name: first_name && last_name ? `${first_name} ${last_name}` : username,
-        imageUrl: image_url,
+        username,
+        first_name,
+        last_name,
+        image_url,
+        profile_image_url,
       });
 
       try {
@@ -87,6 +101,7 @@ export const clerkWebhooks = async (req, res) => {
           return res.json({
             success: true,
             message: "User already exists",
+            data: existingUser,
           });
         }
 
@@ -95,10 +110,10 @@ export const clerkWebhooks = async (req, res) => {
           _id: id,
           name:
             first_name && last_name
-              ? `${first_name} ${last_name}`
+              ? `${first_name} ${last_name}`.trim()
               : username || email_addresses[0].email_address.split("@")[0],
           email: email_addresses[0].email_address,
-          imageUrl: image_url,
+          imageUrl: profile_image_url || image_url,
           role: "student", // Default role
         });
 
@@ -114,12 +129,13 @@ export const clerkWebhooks = async (req, res) => {
         console.error("MongoDB Error:", dbError);
         return res.status(500).json({
           success: false,
-          message: "Error saving user to database",
+          message: "Database error while saving user",
           error: dbError.message,
         });
       }
     } else if (eventType === "user.updated") {
       // Handle user update
+      const userData = evt.data;
       const {
         id,
         email_addresses,
@@ -127,56 +143,79 @@ export const clerkWebhooks = async (req, res) => {
         first_name,
         last_name,
         image_url,
+        profile_image_url,
         public_metadata,
-      } = evt.data;
+      } = userData;
 
-      const updatedUser = await User.findByIdAndUpdate(
-        id,
-        {
-          name:
-            first_name && last_name
-              ? `${first_name} ${last_name}`
-              : username || email_addresses[0].email_address.split("@")[0],
-          email: email_addresses[0].email_address,
-          imageUrl: image_url,
-          ...(public_metadata?.role && { role: public_metadata.role }), // Only update role if it exists in metadata
-        },
-        { new: true }
-      );
+      try {
+        const updatedUser = await User.findByIdAndUpdate(
+          id,
+          {
+            name:
+              first_name && last_name
+                ? `${first_name} ${last_name}`.trim()
+                : username || email_addresses[0].email_address.split("@")[0],
+            email: email_addresses[0].email_address,
+            imageUrl: profile_image_url || image_url,
+            ...(public_metadata?.role && { role: public_metadata.role }),
+          },
+          { new: true }
+        );
 
-      if (!updatedUser) {
-        // If user doesn't exist in our DB, create them
-        const newUser = new User({
-          _id: id,
-          name:
-            first_name && last_name
-              ? `${first_name} ${last_name}`
-              : username || email_addresses[0].email_address.split("@")[0],
-          email: email_addresses[0].email_address,
-          imageUrl: image_url,
-          role: public_metadata?.role || "student",
+        if (!updatedUser) {
+          // If user doesn't exist, create them
+          const newUser = new User({
+            _id: id,
+            name:
+              first_name && last_name
+                ? `${first_name} ${last_name}`.trim()
+                : username || email_addresses[0].email_address.split("@")[0],
+            email: email_addresses[0].email_address,
+            imageUrl: profile_image_url || image_url,
+            role: public_metadata?.role || "student",
+          });
+
+          await newUser.save();
+          console.log("Created missing user during update:", id);
+        } else {
+          console.log("User updated:", id);
+        }
+      } catch (error) {
+        console.error("Error updating user:", error);
+        return res.status(500).json({
+          success: false,
+          message: "Error updating user",
+          error: error.message,
         });
-
-        await newUser.save();
       }
-      console.log("User updated:", id);
     } else if (eventType === "user.deleted") {
       // Handle user deletion
       const { id } = evt.data;
-      await User.findByIdAndDelete(id);
-      console.log("User deleted:", id);
+      try {
+        await User.findByIdAndDelete(id);
+        console.log("User deleted:", id);
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        return res.status(500).json({
+          success: false,
+          message: "Error deleting user",
+          error: error.message,
+        });
+      }
     }
 
+    // For other event types, just acknowledge receipt
     console.log("Webhook processed successfully");
     return res.json({
       success: true,
       message: "Webhook processed successfully",
+      eventType,
     });
   } catch (error) {
     console.error("Webhook processing error:", error);
     return res.status(500).json({
       success: false,
-      message: "Error processing webhook",
+      message: "Internal server error while processing webhook",
       error: error.message,
     });
   }

@@ -129,39 +129,78 @@ const getUserById = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Get user from both Clerk and database
-    const [clerkUser, dbUser] = await Promise.all([
-      clerkClient.users.getUser(userId),
-      User.findOne(
+    try {
+      // First try to get user from Clerk
+      const clerkUser = await clerkClient.users.getUser(userId);
+
+      // Then try to get from database
+      const dbUser = await User.findOne(
         { _id: userId },
         { _id: 1, name: 1, email: 1, imageUrl: 1, role: 1 }
-      ),
-    ]);
+      );
 
-    if (!clerkUser) {
+      // If user doesn't exist in database but exists in Clerk, create them
+      if (!dbUser && clerkUser) {
+        const newUser = new User({
+          _id: clerkUser.id,
+          name:
+            `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
+            clerkUser.username ||
+            clerkUser.emailAddresses[0]?.emailAddress.split("@")[0],
+          email: clerkUser.emailAddresses[0]?.emailAddress,
+          imageUrl: clerkUser.imageUrl,
+          role: clerkUser.publicMetadata?.role || "student",
+        });
+
+        try {
+          await newUser.save();
+          console.log("Created missing user in database:", userId);
+        } catch (saveError) {
+          console.error("Error saving user to database:", saveError);
+        }
+      }
+
+      // Return merged data, preferring database values if they exist
+      const user = {
+        _id: clerkUser.id,
+        name:
+          dbUser?.name ||
+          `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim(),
+        email: dbUser?.email || clerkUser.emailAddresses[0]?.emailAddress,
+        imageUrl: dbUser?.imageUrl || clerkUser.imageUrl,
+        role: dbUser?.role || clerkUser.publicMetadata?.role || "student",
+      };
+
+      return res.json({
+        success: true,
+        data: user,
+      });
+    } catch (clerkError) {
+      // If user not found in Clerk, try database as fallback
+      if (clerkError.status === 404) {
+        const dbUser = await User.findOne(
+          { _id: userId },
+          { _id: 1, name: 1, email: 1, imageUrl: 1, role: 1 }
+        );
+
+        if (dbUser) {
+          return res.json({
+            success: true,
+            data: dbUser,
+          });
+        }
+      }
+
+      // If not found in either system
       return res.status(404).json({
         success: false,
-        message: "User not found in Clerk",
+        message: "User not found",
+        error: clerkError.message,
       });
     }
-
-    // Merge Clerk and database user data
-    const user = {
-      _id: clerkUser.id,
-      name:
-        dbUser?.name || `${clerkUser.firstName} ${clerkUser.lastName}`.trim(),
-      email: dbUser?.email || clerkUser.emailAddresses[0]?.emailAddress,
-      imageUrl: dbUser?.imageUrl || clerkUser.imageUrl,
-      role: dbUser?.role || clerkUser.publicMetadata?.role || "student",
-    };
-
-    res.json({
-      success: true,
-      data: user,
-    });
   } catch (error) {
-    console.error("Error fetching user:", error);
-    res.status(500).json({
+    console.error("Error in getUserById:", error);
+    return res.status(500).json({
       success: false,
       message: "Error fetching user",
       error: error.message,
