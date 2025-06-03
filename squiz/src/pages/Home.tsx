@@ -17,10 +17,11 @@ export default function Home() {
     e.preventDefault();
     console.log("Starting join room process...");
 
-    if (!userId || !session) {
+    if (!userId || !session || !user) {
       console.log("Authentication check failed:", {
         userId,
         hasSession: !!session,
+        hasUser: !!user,
       });
       setError("Vui lòng đăng nhập để tham gia phòng");
       return;
@@ -69,13 +70,16 @@ export default function Home() {
 
       const joinRoomData = {
         roomCode,
+        userId,
         user: {
           _id: userId,
-          name: user?.fullName || user?.username,
-          imageUrl: user?.imageUrl,
+          name: user?.fullName || user?.username || "Anonymous",
+          imageUrl: user?.imageUrl || "",
+          email: user?.emailAddresses?.[0]?.emailAddress || "",
         },
         deviceInfo: {
           browser: navigator.userAgent,
+          timestamp: new Date().toISOString(),
         },
       };
       console.log("Emitting joinRoom event with data:", joinRoomData);

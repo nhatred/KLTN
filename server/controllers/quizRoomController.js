@@ -267,7 +267,7 @@ async function getRoomByCode(req, res) {
         path: "participants",
         populate: {
           path: "user",
-          select: "name imageUrl",
+          select: "name imageUrl email",
         },
       })
       .populate("questionOrder");
@@ -279,11 +279,28 @@ async function getRoomByCode(req, res) {
       });
     }
 
+    // Check if room is still active or scheduled
+    if (room.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Phòng thi đã kết thúc",
+      });
+    }
+
+    // Check if room has expired
+    if (room.endTime && new Date() > new Date(room.endTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "Phòng thi đã hết thời gian",
+      });
+    }
+
     res.json({
       success: true,
       data: room,
     });
   } catch (error) {
+    console.error("Error in getRoomByCode:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi lấy thông tin phòng",

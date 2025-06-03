@@ -421,7 +421,7 @@ export default function JoinQuiz() {
       // Always proceed to next question after a delay, even for timeout
       setTimeout(() => {
         moveToNextQuestion();
-      }, 3000);
+      }, 2000);
     },
     [moveToNextQuestion, setFeedback, setShowIcons, setIconFading]
   );
@@ -876,17 +876,29 @@ export default function JoinQuiz() {
               />
             </div>
 
-            {/* Music toggle button */}
-            <button
-              onClick={toggleBackgroundMusic}
-              className={`ml-2 music-btn ${isMusicPlaying ? "playing" : ""}`}
-              aria-label={isMusicPlaying ? "Tắt nhạc" : "Bật nhạc"}
-              title={isMusicPlaying ? "Tắt nhạc" : "Bật nhạc"}
-            >
-              <span className="text-white text-xl">
-                {isMusicPlaying ? "🔊" : "🔇"}
-              </span>
-            </button>
+            <div className="flex items-center gap-2 ml-2">
+              {/* Music toggle button */}
+              <button
+                onClick={toggleBackgroundMusic}
+                className={`music-btn ${isMusicPlaying ? "playing" : ""}`}
+                aria-label={isMusicPlaying ? "Tắt nhạc" : "Bật nhạc"}
+                title={isMusicPlaying ? "Tắt nhạc" : "Bật nhạc"}
+              >
+                <span className="text-white text-xl">
+                  {isMusicPlaying ? "🔊" : "🔇"}
+                </span>
+              </button>
+
+              {/* Exit button */}
+              <button
+                onClick={() => navigate(-1)}
+                className="text-white hover:text-orange transition-colors"
+                aria-label="Thoát"
+                title="Thoát"
+              >
+                <span className="text-xl">❌</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-between text-xl items-center text-background">

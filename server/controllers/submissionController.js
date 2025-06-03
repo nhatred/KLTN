@@ -322,13 +322,18 @@ async function submitAnswerRoom(socket, data) {
 
     await participant.save();
 
-    // Lấy tất cả câu hỏi của phòng thi
-    const allQuestions = await Question.find({
-      _id: { $in: [...participant.remainingQuestions] },
+    // Lấy chi tiết câu hỏi theo thứ tự đã lưu trong participant.remainingQuestions
+    const questions = await Question.find({
+      _id: { $in: participant.remainingQuestions },
     });
 
+    // Sắp xếp câu hỏi theo thứ tự đã lưu trong participant.remainingQuestions
+    const orderedQuestions = participant.remainingQuestions
+      .map((qId) => questions.find((q) => q._id.toString() === qId.toString()))
+      .filter(Boolean);
+
     // Format câu hỏi với đáp án đã chọn
-    const formattedQuestions = allQuestions.map((q) => {
+    const formattedQuestions = orderedQuestions.map((q) => {
       const answeredQuestion = participant.answeredQuestions.find(
         (aq) => aq.questionId.toString() === q._id.toString()
       );
@@ -356,7 +361,9 @@ async function submitAnswerRoom(socket, data) {
       })),
       progress: {
         answered: participant.answeredQuestions.length,
-        total: formattedQuestions.length,
+        total:
+          participant.remainingQuestions.length +
+          participant.answeredQuestions.length,
         score: participant.score,
       },
       currentQuestion: formattedQuestions[0] || null,

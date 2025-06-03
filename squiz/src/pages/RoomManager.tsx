@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { connectSocket, disconnectSocket } from "../services/socket";
 import axios from "axios";
 import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
@@ -17,7 +17,11 @@ import { NavLink, useNavigate, useLocation } from "react-router";
 
 const RoomManager = () => {
   const { userId } = useAuth();
-  const { session } = useClerk();
+  const clerk = useClerk();
+  const { session } = clerk;
+  const isClerkLoaded = clerk.loaded;
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
@@ -26,6 +30,8 @@ const RoomManager = () => {
   const { getToken } = useAuth();
   const { user: currentUser } = useUser();
   const [isTeacher, setIsTeacher] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const FETCH_COOLDOWN = 2000; // 2 seconds cooldown between fetches
 
   const [rooms, setRooms] = useState<GroupedRooms>({
     scheduled: [],
@@ -45,118 +51,240 @@ const RoomManager = () => {
     setCompletedList(rooms.completed || []);
   }, [rooms]);
 
-  const fetchRooms = async () => {
-    try {
-      const token = await session?.getToken();
-      if (!token) {
-        console.error("No token available");
+  // Update fetchRooms to include cooldown
+  const fetchRooms = useCallback(
+    async (force: boolean = false) => {
+      if (!isClerkLoaded || !session) {
+        console.log("Waiting for auth to be ready...");
         return;
       }
-      console.log("UserID:", userId);
-      const res = await axios.get(
-        `http://localhost:5000/api/quizRoom/host/${userId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      const allRooms = res.data.data.docs;
 
-      const groupedRooms: GroupedRooms = {
-        scheduled: [],
-        active: [],
-        completed: [],
-      };
+      const now = Date.now();
+      if (!force && now - lastFetchTime < FETCH_COOLDOWN) {
+        return; // Skip if not forced and within cooldown
+      }
 
-      // Lọc từng room vào đúng nhóm theo room.status
-      allRooms.forEach((room: Room) => {
-        if (groupedRooms[room.status]) {
-          groupedRooms[room.status].push(room);
-        }
-      });
-      console.log(groupedRooms);
-      setRooms(groupedRooms);
-    } catch (error: any) {
-      console.error("Lỗi khi tải danh sách phòng:", error.message);
-    }
-  };
-
-  useEffect(() => {
-    if (!userId || !session) return;
-
-    const initializeSocket = async () => {
       try {
+        setError(null);
+        setIsLoading(true);
+
         const token = await session.getToken();
         if (!token) {
           console.error("No token available");
+          setError("Không thể xác thực. Vui lòng đăng nhập lại.");
           return;
         }
 
-        // Khởi tạo socket connection với token
-        const socketInstance = await connectSocket(userId);
-        setSocket(socketInstance);
+        const res = await axios.get(
+          `http://localhost:5000/api/quizRoom/host/${userId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
-        // Join room manager
-        socketInstance.emit("joinUserRoomManager", userId);
-        console.log("Joined room manager for user:", userId);
+        const allRooms = res.data.data.docs;
+        const groupedRooms: GroupedRooms = {
+          scheduled: [],
+          active: [],
+          completed: [],
+        };
 
-        // Lắng nghe sự kiện
-        socketInstance.on("roomActivated", (newRoom) => {
-          console.log("Room activated:", newRoom);
-          setRooms((prev) => {
-            const isRoomAlreadyActive = prev.active.some(
-              (r: Room) => r._id === newRoom._id
-            );
-            if (isRoomAlreadyActive) {
-              return prev;
-            }
-            const updatedScheduled = prev.scheduled.filter(
-              (r: Room) => r._id !== newRoom._id
-            );
-            const updatedActive = [newRoom, ...prev.active];
-            return {
-              ...prev,
-              scheduled: updatedScheduled,
-              active: updatedActive,
-            };
-          });
+        allRooms.forEach((room: Room) => {
+          if (groupedRooms[room.status]) {
+            groupedRooms[room.status].push(room);
+          }
         });
 
-        socketInstance.on("roomCompleted", (room) => {
-          console.log("Room completed:", room);
-          setRooms((prev) => {
-            const isRoomAlreadyCompleted = prev.completed.some(
-              (r) => r._id === room._id
-            );
-            if (isRoomAlreadyCompleted) {
-              return prev;
-            }
-            const updatedActive = prev.active.filter((r) => r._id !== room._id);
-            const updatedCompleted = [room, ...prev.completed];
-            return {
-              ...prev,
-              active: updatedActive,
-              completed: updatedCompleted,
-            };
-          });
-        });
-
-        // Fetch rooms
-        fetchRooms();
-      } catch (error) {
-        console.error("Error initializing socket:", error);
+        setRooms(groupedRooms);
+        setLastFetchTime(now);
+      } catch (error: any) {
+        console.error("Lỗi khi tải danh sách phòng:", error);
+        setError("Không thể tải danh sách phòng. Vui lòng thử lại.");
+      } finally {
+        setIsLoading(false);
       }
+    },
+    [userId, session, isClerkLoaded]
+  );
+
+  // Add function to check if a room should be completed
+  const shouldCompleteRoom = (room: Room) => {
+    if (!room.startTime || !room.durationMinutes) return false;
+    const startTime = new Date(room.startTime);
+    const endTime = new Date(
+      startTime.getTime() + room.durationMinutes * 60 * 1000
+    );
+    return endTime <= new Date();
+  };
+
+  // Update shouldActivateRoom to be more strict
+  const shouldActivateRoom = (room: Room) => {
+    if (!room.startTime || !room._id || room.status !== "scheduled")
+      return false;
+    const startTime = new Date(room.startTime);
+    const now = new Date();
+    // Add a small buffer (5 seconds) to avoid race conditions
+    return startTime <= new Date(now.getTime() + 5000);
+  };
+
+  // Update checkRoomStatuses with better error handling
+  const checkRoomStatuses = useCallback(async () => {
+    if (!isClerkLoaded || !session) return;
+
+    try {
+      const token = await session.getToken();
+      if (!token) return;
+
+      let needsUpdate = false;
+
+      // Check scheduled rooms for activation
+      for (const room of scheduledList) {
+        if (shouldActivateRoom(room)) {
+          try {
+            // First check if the room is still in scheduled state
+            const roomCheck = await axios.get(
+              `http://localhost:5000/api/quizRoom/${room._id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (roomCheck.data.data.status !== "scheduled") {
+              console.log(
+                `Room ${room._id} is no longer in scheduled state, skipping activation`
+              );
+              needsUpdate = true;
+              continue;
+            }
+
+            const response = await axios.post(
+              `http://localhost:5000/api/quizRoom/${room._id}/start`,
+              {},
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+
+            if (response.data.success) {
+              console.log(`Successfully activated room ${room._id}`);
+              needsUpdate = true;
+            }
+          } catch (err: any) {
+            // Handle specific error cases
+            if (err.response?.status === 400) {
+              const errorMessage =
+                err.response?.data?.message || "Unknown error";
+              if (errorMessage.includes("already active")) {
+                console.log(`Room ${room._id} is already active`);
+                needsUpdate = true;
+              } else {
+                console.error(
+                  `Error activating room ${room._id}:`,
+                  errorMessage
+                );
+              }
+            } else {
+              console.error(
+                `Failed to activate room ${room._id}:`,
+                err.message
+              );
+            }
+          }
+        }
+      }
+
+      // Check active rooms for completion
+      for (const room of activeList) {
+        if (shouldCompleteRoom(room)) {
+          try {
+            // First check if the room is still active
+            const roomCheck = await axios.get(
+              `http://localhost:5000/api/quizRoom/${room._id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (roomCheck.data.data.status !== "active") {
+              console.log(
+                `Room ${room._id} is no longer active, skipping completion`
+              );
+              needsUpdate = true;
+              continue;
+            }
+
+            if (socket) {
+              socket.emit(
+                "closeRoom",
+                {
+                  roomId: room._id,
+                  userId: room.host,
+                },
+                (response: any) => {
+                  if (response?.success) {
+                    console.log(`Successfully completed room ${room._id}`);
+                    needsUpdate = true;
+                  } else {
+                    console.error(
+                      `Failed to complete room ${room._id}:`,
+                      response?.message || "Unknown error"
+                    );
+                  }
+                }
+              );
+            }
+          } catch (err: any) {
+            console.error(`Error completing room ${room._id}:`, err.message);
+          }
+        }
+      }
+
+      // Only fetch if there were changes
+      if (needsUpdate) {
+        await fetchRooms(true);
+      }
+    } catch (error: any) {
+      console.error("Error checking room statuses:", error.message);
+    }
+  }, [scheduledList, activeList, session, isClerkLoaded, socket, fetchRooms]);
+
+  // Update socket effect to be more efficient
+  useEffect(() => {
+    if (!socket || !userId || !session) return;
+
+    const handleRoomUpdate = () => {
+      fetchRooms(true);
     };
 
-    initializeSocket();
+    socket.emit("joinUserRoomManager", userId);
+
+    // Use the same handler for all room update events
+    socket.on("roomActivated", handleRoomUpdate);
+    socket.on("roomCompleted", handleRoomUpdate);
+    socket.on("roomStatusUpdated", handleRoomUpdate);
 
     return () => {
-      if (socket) {
-        disconnectSocket(socket);
-      }
+      socket.off("roomActivated", handleRoomUpdate);
+      socket.off("roomCompleted", handleRoomUpdate);
+      socket.off("roomStatusUpdated", handleRoomUpdate);
     };
-  }, [userId, session]);
+  }, [socket, userId, session, fetchRooms]);
+
+  // Initial data load
+  useEffect(() => {
+    if (isClerkLoaded && session && userId) {
+      fetchRooms(true);
+    }
+  }, [isClerkLoaded, session, userId, fetchRooms]);
+
+  // Periodic status check
+  useEffect(() => {
+    if (!isClerkLoaded || !session) return;
+
+    const interval = setInterval(checkRoomStatuses, 5000);
+    return () => clearInterval(interval);
+  }, [checkRoomStatuses, isClerkLoaded, session]);
 
   // Add effect to handle refresh parameter
   useEffect(() => {
@@ -185,7 +313,10 @@ const RoomManager = () => {
             }
           );
           console.log(response.data.data);
-          setIsTeacher(response.data.data.role === "teacher");
+          setIsTeacher(
+            response.data.data.role === "teacher" ||
+              response.data.data.role === "admin"
+          );
         }
       } catch (error) {
         console.error("Error checking admin status:", error);
@@ -196,6 +327,11 @@ const RoomManager = () => {
     checkTeacherStatus();
   }, [currentUser]);
 
+  // Update the return JSX to handle loading and error states
+  if (!isClerkLoaded || !session) {
+    return <div className="p-8 text-center">Đang tải...</div>;
+  }
+
   if (!isTeacher) {
     return (
       <div className="p-8 text-center pt-20 w-full h-full flex flex-col items-center justify-center">
@@ -204,6 +340,24 @@ const RoomManager = () => {
         <p className="mt-4">Bạn không có quyền truy cập trang này.</p>
       </div>
     );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-500">
+        {error}
+        <button
+          onClick={() => fetchRooms(true)}
+          className="ml-4 text-blue-500 underline"
+        >
+          Thử lại
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return <div className="p-8 text-center">Đang tải danh sách phòng...</div>;
   }
 
   const handleCompletedRoom = (room: Room) => {

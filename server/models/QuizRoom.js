@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
 import { type } from "os";
+import Question from "./Question.js";
 
 const quizRoomSchema = new mongoose.Schema(
   {
@@ -182,22 +183,36 @@ quizRoomSchema.methods.startRoom = async function () {
     if (this.quiz.isExam && this.quiz.questionBankQueries?.length > 0) {
       console.log("Generating questions from question bank");
       const allQuestions = [];
+
+      // Process each query in sequence
       for (const criteria of this.quiz.questionBankQueries) {
         const { examSetId, difficulty, limit } = criteria;
         console.log("Processing query:", { examSetId, difficulty, limit });
 
+        // Build filter for question search
         const filter = { examSetId: new mongoose.Types.ObjectId(examSetId) };
         if (difficulty) filter.difficulty = difficulty;
 
+        // Fetch matching questions
         const questions = await Question.find(filter);
         console.log(
           `Found ${questions.length} matching questions for bank ${examSetId}`
         );
 
-        const shuffled = questions.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, limit);
+        if (questions.length === 0) {
+          console.warn(`No questions found for criteria:`, criteria);
+          continue;
+        }
+
+        // Take required number of questions
+        const selected = questions.slice(0, limit);
         allQuestions.push(...selected);
       }
+
+      if (allQuestions.length === 0) {
+        throw new Error("Không thể tạo câu hỏi từ ngân hàng câu hỏi");
+      }
+
       this.questionOrder = allQuestions.map((q) => q._id);
       console.log(
         `Generated ${this.questionOrder.length} questions from banks`
@@ -214,6 +229,49 @@ quizRoomSchema.methods.startRoom = async function () {
   if (!this.questionOrder || this.questionOrder.length === 0) {
     throw new Error("Không thể tạo câu hỏi cho phòng thi");
   }
+
+  // Populate participants to get their IDs
+  await this.populate("participants");
+
+  // For each participant, generate a random question order and save it
+  const participantUpdates = this.participants.map(async (participantId) => {
+    try {
+      // Get the participant
+      const participant = await mongoose
+        .model("Participant")
+        .findById(participantId);
+      if (!participant) {
+        console.warn(`Participant ${participantId} not found`);
+        return;
+      }
+
+      // Create a copy of the questions array for this participant
+      const participantQuestions = [...this.questionOrder];
+
+      // Shuffle the questions using Fisher-Yates algorithm
+      for (let i = participantQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [participantQuestions[i], participantQuestions[j]] = [
+          participantQuestions[j],
+          participantQuestions[i],
+        ];
+      }
+
+      // Update participant's remaining questions with their shuffled order
+      participant.remainingQuestions = participantQuestions;
+      participant.answeredQuestions = []; // Reset answered questions
+
+      // Save the participant
+      await participant.save();
+
+      console.log(`Updated question order for participant ${participantId}`);
+    } catch (error) {
+      console.error(`Error updating participant ${participantId}:`, error);
+    }
+  });
+
+  // Wait for all participant updates to complete
+  await Promise.all(participantUpdates);
 
   const now = new Date();
   this.startTime = now;

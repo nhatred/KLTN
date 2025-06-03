@@ -154,8 +154,20 @@ async function joinRoom(socket, data) {
         }
       });
 
+      // Lấy chi tiết câu hỏi theo thứ tự đã lưu trong participant.remainingQuestions
+      const questions = await Question.find({
+        _id: { $in: participant.remainingQuestions },
+      });
+
+      // Sắp xếp câu hỏi theo thứ tự đã lưu
+      const orderedQuestions = participant.remainingQuestions
+        .map((qId) =>
+          questions.find((q) => q._id.toString() === qId.toString())
+        )
+        .filter(Boolean);
+
       // Phân loại câu hỏi thành remaining và answered dựa trên submissions
-      const remainingQuestions = room.questionOrder.filter((q) => {
+      const remainingQuestions = orderedQuestions.filter((q) => {
         const answer = questionAnswerMap.get(q._id.toString());
         return !answer || answer.status !== "final";
       });
@@ -227,6 +239,16 @@ async function joinRoom(socket, data) {
     // Nếu không tìm thấy participant, tạo mới
     console.log("Creating new participant");
 
+    // Tạo bản sao và trộn câu hỏi cho participant mới
+    const shuffledQuestions = [...room.questionOrder];
+    for (let i = shuffledQuestions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledQuestions[i], shuffledQuestions[j]] = [
+        shuffledQuestions[j],
+        shuffledQuestions[i],
+      ];
+    }
+
     const newParticipant = {
       quizRoom: room._id,
       user: user?._id,
@@ -236,7 +258,7 @@ async function joinRoom(socket, data) {
       isLoggedIn: !!user,
       deviceInfo,
       connectionId: socket.id,
-      remainingQuestions: room.questionOrder.map((q) => q._id),
+      remainingQuestions: shuffledQuestions.map((q) => q._id), // Sử dụng thứ tự câu hỏi đã trộn
       answeredQuestions: [],
       score: 0,
       status: "active", // Thêm trạng thái mặc định
@@ -250,8 +272,8 @@ async function joinRoom(socket, data) {
       await room.save();
     }
 
-    // Format câu hỏi cho participant mới
-    const formattedQuestions = room.questionOrder.map((q) => ({
+    // Format câu hỏi cho participant mới theo thứ tự đã trộn
+    const formattedQuestions = shuffledQuestions.map((q) => ({
       _id: q._id,
       questionText: q.questionText,
       questionType: q.questionType,
@@ -396,7 +418,7 @@ export const getUserInfo = async (req, res) => {
   }
 };
 
-// Update getParticipantStatusByUserId to return full question data
+// Update getParticipantStatusByUserId function
 export const getParticipantStatusByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -406,8 +428,8 @@ export const getParticipantStatusByUserId = async (req, res) => {
       `Getting participant status for user ${userId} in room ${roomId}`
     );
 
-    // Lấy thông tin room và câu hỏi
-    const room = await QuizRoom.findById(roomId).populate("questionOrder");
+    // Lấy thông tin room
+    const room = await QuizRoom.findById(roomId);
     if (!room) {
       console.log("Room not found");
       return res.status(404).json({
@@ -415,12 +437,6 @@ export const getParticipantStatusByUserId = async (req, res) => {
         message: "Room not found",
       });
     }
-
-    console.log("Room found:", {
-      roomId: room._id,
-      questionCount: room.questionOrder?.length,
-      status: room.status,
-    });
 
     // Tìm participant và populate submissions
     const participant = await Participant.findOne({
@@ -440,7 +456,7 @@ export const getParticipantStatusByUserId = async (req, res) => {
       });
     }
 
-    // Lấy tất cả submissions của participant
+    // Lấy submissions
     const submissions = await Submission.find({
       participant: participant._id,
     }).sort({ createdAt: -1 });
@@ -461,33 +477,24 @@ export const getParticipantStatusByUserId = async (req, res) => {
       }
     });
 
-    console.log("Participant found:", {
-      participantId: participant._id,
-      remainingCount: participant.remainingQuestions?.length,
-      answeredCount: participant.answeredQuestions?.length,
-      submissionCount: submissions.length,
-    });
-
-    // Lấy chi tiết câu hỏi từ questionOrder của room
+    // Lấy chi tiết câu hỏi theo thứ tự đã lưu trong participant.remainingQuestions
     const questions = await Question.find({
-      _id: { $in: room.questionOrder },
+      _id: {
+        $in: [
+          ...participant.remainingQuestions,
+          ...participant.answeredQuestions.map((aq) => aq.questionId),
+        ],
+      },
     });
 
-    console.log(
-      `Retrieved ${questions.length} questions from room's questionOrder`
-    );
-
-    // Phân loại câu hỏi dựa trên submissions
-    const remainingQuestions = questions.filter((q) => {
-      const answer = questionAnswerMap.get(q._id.toString());
-      return !answer || answer.status !== "final";
-    });
+    // Sắp xếp câu hỏi theo thứ tự đã lưu
+    const orderedQuestions = participant.remainingQuestions
+      .map((qId) => questions.find((q) => q._id.toString() === qId.toString()))
+      .filter(Boolean);
 
     // Format câu hỏi để trả về
-    const formattedQuestions = remainingQuestions.map((q) => {
-      // Lấy submission cho câu hỏi này nếu có
+    const formattedQuestions = orderedQuestions.map((q) => {
       const answer = questionAnswerMap.get(q._id.toString());
-
       return {
         _id: q._id,
         questionText: q.questionText,
@@ -500,7 +507,7 @@ export const getParticipantStatusByUserId = async (req, res) => {
             ? q.answers.map((a) => ({
                 _id: a._id,
                 text: a.text,
-                isCorrect: false, // Hide correct answers
+                isCorrect: false,
               }))
             : q.options || [],
         dragDropPairs: q.dragDropPairs || [],
@@ -508,9 +515,9 @@ export const getParticipantStatusByUserId = async (req, res) => {
           q.answers?.map((a) => ({
             _id: a._id,
             text: a.text,
-            isCorrect: false, // Hide correct answers
+            isCorrect: false,
           })) || [],
-        selectedAnswerId: answer?.answerId || null, // Thêm selectedAnswerId
+        selectedAnswerId: answer?.answerId || null,
         submission: answer
           ? {
               isCorrect: answer.isCorrect,
@@ -562,17 +569,6 @@ export const getParticipantStatusByUserId = async (req, res) => {
             : null,
         };
       });
-
-    console.log("Question categorization:", {
-      total: questions.length,
-      remaining: formattedQuestions.length,
-      answered: formattedAnsweredQuestions.length,
-      submissions: submissions.length,
-    });
-
-    // Cập nhật remainingQuestions của participant
-    participant.remainingQuestions = remainingQuestions.map((q) => q._id);
-    await participant.save();
 
     // Tính lại tổng điểm từ submissions
     const totalScore = submissions

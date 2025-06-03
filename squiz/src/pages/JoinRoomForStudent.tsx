@@ -176,6 +176,10 @@ export default function JoinRoomForStudent() {
   const [showDetails, setShowDetails] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
     const savedIndex = localStorage.getItem(`quiz_current_question_${code}`);
+    console.log(
+      "[INIT] Restoring question index from localStorage:",
+      savedIndex
+    );
     return savedIndex ? parseInt(savedIndex) : 0;
   });
   const [showQuestions, setShowQuestions] = useState(false);
@@ -337,7 +341,7 @@ export default function JoinRoomForStudent() {
           throw new Error("Socket connection not available");
         }
 
-        console.log("Attempting to join room with data:", {
+        console.log("[JOIN] Starting join room process with data:", {
           roomCode: roomData.roomCode,
           userId,
           userName: user?.fullName,
@@ -359,13 +363,13 @@ export default function JoinRoomForStudent() {
             },
           };
 
-          console.log("Emitting joinRoom event with data:", joinData);
+          console.log("[JOIN] Emitting joinRoom event with data:", joinData);
 
           socket.emit("joinRoom", joinData, async (response: any) => {
-            console.log("Received joinRoom response:", response);
+            console.log("[JOIN] Received joinRoom response:", response);
 
             if (!response.success) {
-              console.error("Join room failed:", response.message);
+              console.error("[JOIN] Join room failed:", response.message);
               reject(new Error(response.message || "Failed to join room"));
               return;
             }
@@ -376,52 +380,85 @@ export default function JoinRoomForStudent() {
                 response.remainingQuestions &&
                 response.remainingQuestions.length > 0
               ) {
-                console.log("Using questions from socket response:", {
+                console.log("[JOIN] Questions received from server:", {
                   count: response.remainingQuestions.length,
+                  firstTwoQuestions: response.remainingQuestions
+                    .slice(0, 2)
+                    .map((q: any) => ({
+                      id: q._id,
+                      text: q.questionText?.substring(0, 30) + "...",
+                    })),
                 });
+
+                // Set questions immediately
                 setQuestions(response.remainingQuestions);
                 setShowQuestions(true);
-              }
 
-              // Refresh room data after joining
-              const token = await getToken();
-              const updatedResponse = await fetch(
-                `http://localhost:5000/api/quizRoom/code/${roomData.roomCode}`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-              const updatedData = await updatedResponse.json();
-              if (updatedData.success) {
-                console.log("Room data updated after join:", updatedData.data);
-                resolve(updatedData.data);
+                // Create room data with shuffled questions
+                const roomWithShuffledQuestions = {
+                  ...roomData,
+                  questionOrder: response.remainingQuestions,
+                };
+
+                console.log("[JOIN] Setting room with shuffled questions:", {
+                  roomId: roomWithShuffledQuestions._id,
+                  questionCount: response.remainingQuestions.length,
+                });
+
+                resolve(roomWithShuffledQuestions);
               } else {
-                console.error(
-                  "Failed to get updated room data:",
-                  updatedData.message
-                );
-                reject(
-                  new Error(
-                    updatedData.message || "Failed to get updated room data"
-                  )
-                );
+                console.error("[JOIN] No questions received from server");
+                reject(new Error("No questions received from server"));
               }
             } catch (error) {
-              console.error("Error in join room callback:", error);
+              console.error("[JOIN] Error in join room callback:", error);
               reject(error);
             }
           });
         });
       } catch (error) {
-        console.error("Error in handleJoinRoom:", error);
+        console.error("[JOIN] Error in handleJoinRoom:", error);
         throw error;
       }
     },
-    [socket, userId, getToken, user]
+    [socket, userId, user]
   );
+
+  // Add effect to monitor questions state
+  useEffect(() => {
+    if (questions.length > 0) {
+      console.log("[QUESTIONS] Questions state updated:", {
+        total: questions.length,
+        currentIndex: currentQuestionIndex,
+        currentQuestion: questions[currentQuestionIndex]
+          ? {
+              id: questions[currentQuestionIndex]._id,
+              text:
+                questions[currentQuestionIndex].questionText?.substring(0, 30) +
+                "...",
+            }
+          : null,
+        firstTwoQuestions: questions.slice(0, 2).map((q) => ({
+          id: q._id,
+          text: q.questionText?.substring(0, 30) + "...",
+        })),
+      });
+    }
+  }, [questions, currentQuestionIndex]);
+
+  // Add effect to monitor room state
+  useEffect(() => {
+    if (room) {
+      console.log("[ROOM] Room state updated:", {
+        roomId: room._id,
+        questionOrderLength: room.questionOrder?.length,
+        firstTwoQuestionsInOrder: room.questionOrder?.slice(0, 2).map((q) => ({
+          id: q._id,
+          text: q.questionText?.substring(0, 30) + "...",
+        })),
+      });
+    }
+  }, [room]);
 
   const fetchAllUsers = useCallback(async () => {
     try {
@@ -467,6 +504,7 @@ export default function JoinRoomForStudent() {
     }
   }, [getToken]);
 
+  // Update getRoom to handle questions properly
   const getRoom = useCallback(async () => {
     try {
       setLoading(true);
@@ -508,13 +546,6 @@ export default function JoinRoomForStudent() {
           quiz: data.data.quiz?._id,
         });
 
-        // Set room data
-        setRoom(data.data);
-
-        // Then fetch all users
-        console.log("Fetching all users after room data...");
-        await fetchAllUsers();
-
         // Check if user is already a participant
         const isParticipant = data.data.participants?.some((p: any) => {
           const participantUserId =
@@ -545,16 +576,34 @@ export default function JoinRoomForStudent() {
 
           if (participantResponse.ok) {
             const participantData = await participantResponse.json();
-            console.log("Received participant data:", participantData);
+            console.log("Received participant data:", {
+              success: participantData.success,
+              remainingQuestions:
+                participantData.data?.remainingQuestions?.length,
+              answeredQuestions:
+                participantData.data?.answeredQuestions?.length,
+            });
 
             if (participantData.success && participantData.data) {
               console.log("Setting questions from existing participant:", {
                 questionCount: participantData.data.remainingQuestions?.length,
+                sampleQuestions: participantData.data.remainingQuestions
+                  ?.slice(0, 2)
+                  .map((q: any) => ({
+                    id: q._id,
+                    text: q.questionText?.substring(0, 30) + "...",
+                  })),
               });
               const remainingQuestions =
                 participantData.data.remainingQuestions || [];
               setQuestions(remainingQuestions);
               setShowQuestions(true);
+
+              // Set room data with participant's questions
+              setRoom({
+                ...data.data,
+                questionOrder: remainingQuestions,
+              });
             } else {
               console.error(
                 "Failed to get participant data:",
@@ -571,7 +620,16 @@ export default function JoinRoomForStudent() {
           // Join room as a new participant
           console.log("Joining room as new participant...");
           const joinResponse = await handleJoinRoom(data.data);
-          console.log("Join room response:", joinResponse);
+          console.log("Join room response:", {
+            roomId: (joinResponse as Room)._id,
+            questionCount: (joinResponse as Room).questionOrder?.length,
+            sampleQuestions: (joinResponse as Room).questionOrder
+              ?.slice(0, 2)
+              .map((q: any) => ({
+                id: q._id,
+                text: q.questionText?.substring(0, 30) + "...",
+              })),
+          });
           setRoom(joinResponse as Room);
         }
       } else {
@@ -582,7 +640,7 @@ export default function JoinRoomForStudent() {
     } finally {
       setLoading(false);
     }
-  }, [code, getToken, user, userId, fetchAllUsers, handleJoinRoom]);
+  }, [code, getToken, user, userId, handleJoinRoom]);
 
   useEffect(() => {
     getRoom();
@@ -1962,7 +2020,9 @@ export default function JoinRoomForStudent() {
 
     const restoreState = async () => {
       try {
+        console.log("[RESTORE] Starting state restoration");
         const token = await getToken();
+
         // Fetch participant status
         const response = await fetch(
           `http://localhost:5000/api/participant/status/${userId}?roomId=${room._id}`,
@@ -1976,19 +2036,40 @@ export default function JoinRoomForStudent() {
 
         if (response.ok) {
           const data = await response.json();
-          console.log("Restored participant status:", data);
+          console.log("[RESTORE] Participant status:", {
+            success: data.success,
+            hasData: !!data.data,
+            remainingQuestionsCount: data.data?.remainingQuestions?.length,
+            answeredQuestionsCount: data.data?.answeredQuestions?.length,
+          });
 
           if (data.success && data.data) {
             // Restore questions and set current question
             if (Array.isArray(data.data.remainingQuestions)) {
+              const remainingQuestions = data.data.remainingQuestions;
+
+              // Get saved index before setting questions
+              const savedIndex = localStorage.getItem(
+                `quiz_current_question_${code}`
+              );
+              const parsedIndex = savedIndex ? parseInt(savedIndex) : 0;
+
+              console.log("[RESTORE] Found saved index:", {
+                savedIndex,
+                parsedIndex,
+                totalQuestions: remainingQuestions.length,
+              });
+
               // Get saved answers first
               const savedAnswers = localStorage.getItem(`quiz_answers_${code}`);
               const parsedAnswers = savedAnswers
                 ? JSON.parse(savedAnswers)
                 : {};
 
+              console.log("[RESTORE] Found saved answers:", parsedAnswers);
+
               // Build answers map from remaining questions with submissions
-              const remainingAnswers = data.data.remainingQuestions.reduce(
+              const remainingAnswers = remainingQuestions.reduce(
                 (acc: Record<string, string>, q: any) => {
                   if (q.selectedAnswerId) {
                     acc[q._id] = q.selectedAnswerId;
@@ -2009,6 +2090,11 @@ export default function JoinRoomForStudent() {
                 {}
               );
 
+              console.log("[RESTORE] Server answers:", {
+                remainingAnswers,
+                answeredAnswers,
+              });
+
               // Merge all answers, prioritizing server data
               const mergedAnswers = {
                 ...parsedAnswers,
@@ -2016,97 +2102,83 @@ export default function JoinRoomForStudent() {
                 ...answeredAnswers,
               };
 
+              console.log("[RESTORE] Final merged answers:", mergedAnswers);
+
+              // Set questions and answers
+              setQuestions(remainingQuestions);
               setSelectedAnswers(mergedAnswers);
+
+              // Save merged answers to localStorage
               localStorage.setItem(
                 `quiz_answers_${code}`,
                 JSON.stringify(mergedAnswers)
               );
 
-              // Keep track of original question order
-              const allQuestions = room.questionOrder.filter(
-                (q: any) =>
-                  data.data.remainingQuestions.some(
-                    (rq: any) => rq._id === q._id
-                  ) ||
-                  data.data.answeredQuestions.some(
-                    (aq: any) => aq.questionId === q._id
-                  )
-              );
-
-              setQuestions(allQuestions);
-              setRemainingQuestions(data.data.remainingQuestions);
-
-              // Get saved question index
-              const savedIndex = localStorage.getItem(
-                `quiz_current_question_${code}`
-              );
-              let currentIndex = savedIndex ? parseInt(savedIndex) : 0;
-
-              // Validate current index
-              if (currentIndex >= allQuestions.length) {
-                currentIndex = allQuestions.length - 1;
+              // Validate and set current index
+              let validIndex = parsedIndex;
+              if (validIndex >= remainingQuestions.length) {
+                validIndex = remainingQuestions.length - 1;
               }
+              if (validIndex < 0) validIndex = 0;
 
-              // Set current question without advancing
-              setCurrentQuestionIndex(currentIndex);
-              setCurrentQuestion(allQuestions[currentIndex]);
+              console.log("[RESTORE] Setting validated index:", validIndex);
+
+              // Set current question index
+              setCurrentQuestionIndex(validIndex);
+
+              // Update localStorage with validated index
+              localStorage.setItem(
+                `quiz_current_question_${code}`,
+                validIndex.toString()
+              );
 
               // Show questions if we have any
-              if (allQuestions.length > 0) {
+              if (remainingQuestions.length > 0) {
                 setShowQuestions(true);
               }
 
-              // Restore answered questions
-              if (Array.isArray(data.data.answeredQuestions)) {
-                setAnsweredQuestions(data.data.answeredQuestions);
-              }
-
-              // Restore progress
+              // Update progress if available
               if (data.data.progress) {
                 setProgress(data.data.progress);
                 localStorage.setItem(
                   `quiz_progress_${code}`,
                   JSON.stringify(data.data.progress)
                 );
+              }
 
-                // Check if quiz is completed
-                if (data.data.isCompleted) {
-                  setSubmitted(true);
-                  localStorage.setItem(`quiz_submitted_${code}`, "true");
-
-                  // Fetch and set quiz results
-                  const resultsResponse = await fetch(
-                    `http://localhost:5000/api/submission/results?roomId=${room._id}&userId=${userId}`,
-                    {
-                      headers: {
-                        Authorization: `Bearer ${await getToken()}`,
-                        "Content-Type": "application/json",
-                      },
-                    }
-                  );
-
-                  if (resultsResponse.ok) {
-                    const resultsData = await resultsResponse.json();
-                    if (resultsData.success) {
-                      setQuizResults(resultsData.data);
-                      localStorage.setItem(
-                        `quiz_results_${code}`,
-                        JSON.stringify(resultsData.data)
-                      );
-                    }
-                  }
-                }
+              // Check completion status
+              const isCompleted = data.data.isCompleted || false;
+              if (isCompleted) {
+                setSubmitted(true);
+                localStorage.setItem(`quiz_submitted_${code}`, "true");
+              } else {
+                setSubmitted(false);
+                localStorage.removeItem(`quiz_submitted_${code}`);
               }
             }
           }
         }
       } catch (error) {
-        console.error("Error restoring state:", error);
+        console.error("[RESTORE] Error restoring state:", error);
       }
     };
 
     restoreState();
   }, [room, userId, code, getToken]);
+
+  // Add effect to persist current question index
+  useEffect(() => {
+    if (currentQuestionIndex >= 0) {
+      console.log(
+        "[PERSIST] Saving current question index:",
+        currentQuestionIndex
+      );
+      localStorage.setItem(
+        `quiz_current_question_${code}`,
+        currentQuestionIndex.toString()
+      );
+    }
+  }, [currentQuestionIndex, code]);
 
   // Modal for confirming quiz submission
   const confirmModal = (

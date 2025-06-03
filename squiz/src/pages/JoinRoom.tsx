@@ -41,6 +41,11 @@ export default function JoinRoom() {
     durationMinutes: number;
     roomCode: string;
     lastActivationCheck: string | null;
+    host: {
+      _id: string;
+      name: string;
+      imageUrl: string;
+    };
   }
 
   // Add interface for participant progress
@@ -435,8 +440,62 @@ export default function JoinRoom() {
     setShowConfirmModal(true);
   };
 
+  const handleStartRoom = async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        console.error("No token available");
+        return;
+      }
+
+      console.log("Starting room with ID:", id);
+      const res = await fetch(
+        `http://localhost:5000/api/quizRoom/${id}/start`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await res.json();
+      if (data.success) {
+        console.log("Room started successfully:", data.message);
+        // Refresh room data
+        getRoom();
+      } else {
+        console.error("Failed to start room:", data.message);
+      }
+    } catch (err) {
+      console.error("Error starting room:", err);
+    }
+  };
+
   const handleConfirm = () => {
-    // Xử lý logic kết thúc bài kiểm tra ở đây
+    if (!socket || !room) {
+      console.error("Socket not connected or room not found");
+      return;
+    }
+
+    console.log("Closing room:", room._id);
+    const data = {
+      roomId: room._id,
+      userId: room.host._id,
+    };
+
+    // Emit closeRoom event
+    socket.emit("closeRoom", data, (response: any) => {
+      console.log("Server response for closeRoom:", response);
+      if (response.success) {
+        console.log("Room closed successfully");
+        // Refresh room data
+        getRoom();
+      } else {
+        console.error("Failed to close room:", response.message);
+      }
+    });
+
     setShowConfirmModal(false);
   };
 
@@ -788,14 +847,21 @@ export default function JoinRoom() {
           <div>
             <p>{timeRemaining}</p>
           </div>
-          {room?.status !== "completed" && (
+          {room?.status === "active" ? (
             <div
               className="flex bg-orange text-darkblue btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg cursor-pointer"
               onClick={handleEndQuiz}
             >
               <p>Kết thúc bài kiểm tra</p>
             </div>
-          )}
+          ) : room?.status === "scheduled" ? (
+            <div
+              className="flex bg-orange text-darkblue btn-hover items-center gap-2 py-2 px-3 rounded font-semibold text-lg cursor-pointer"
+              onClick={handleStartRoom}
+            >
+              <p>Bắt đầu</p>
+            </div>
+          ) : null}
         </div>
       </nav>
 
@@ -892,6 +958,7 @@ export default function JoinRoom() {
                     </div>
                   ) : (
                     <div
+                      onClick={handleStartRoom}
                       className={`button-30 text-darkblue rounded-lg bg-orange px-10 py-5 ${
                         number > 0 ? "animate-pulse-scale" : ""
                       }`}
