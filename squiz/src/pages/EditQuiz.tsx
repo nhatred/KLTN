@@ -1517,7 +1517,7 @@ export default function EditQuiz() {
 
               {/* Question List */}
               {!isExam &&
-                questions.map((question, index) => {
+                questions.map((question) => {
                   // Skip if question._id is undefined
                   if (!question._id) return null;
 
