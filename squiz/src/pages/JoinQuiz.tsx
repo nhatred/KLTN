@@ -17,7 +17,8 @@ import { FeedbackState } from "../types/FeedbackState";
 import { playSound } from "../functions/playSound";
 import { useUser } from "@clerk/clerk-react";
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
+
 
 // Sound paths
 const SOUNDS = {

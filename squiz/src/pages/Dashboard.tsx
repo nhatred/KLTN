@@ -7,9 +7,9 @@ import { useUser, useAuth } from "@clerk/clerk-react";
 import { NavLink } from "react-router";
 import QuizDetailModal from "../components/QuizDetailModal";
 import SpinnerLoading from "../components/SpinnerLoading";
-const API_BASE_URL = "http://localhost:5000/api";
-
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
 export default function Dashboard() {
+
   const [quizs, setQuizs] = useState<Quiz[]>([]);
   const [examQuizs, setExamQuizs] = useState<Quiz[]>([]);
   const [recentQuizzes, setRecentQuizzes] = useState<Quiz[]>([]);

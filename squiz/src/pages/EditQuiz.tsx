@@ -41,7 +41,8 @@ const DIFFICULTY_OPTIONS = [
 
 const TIME_OPTIONS = [15, 30, 45, 60, 90];
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
+
 
 export default function EditQuiz() {
   const { id } = useParams<{ id: string }>();
